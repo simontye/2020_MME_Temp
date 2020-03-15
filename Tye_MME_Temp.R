@@ -1,9 +1,34 @@
 ###############################################################
 # MME_WaterTemp
-# 20200108
+# 2020.03.15
 # SPT
 ###############################################################
+### Progress report
 
+# 1. Reformatted Phelps et al. (2019) dataset to match Till et al. (2019).
+
+# 2. Since we need to know which lakes were affected for the water temperature assessments,
+#    I matched the GPS coordinates from Phelps to the nearest waterbody centroid
+#    This worked for 229/284 events in the dataset. I still need to fix those 60 events.
+
+# 3. Then I matched up fish taxa across datasets, merged both datasets, and created columns
+#    for each fish family since species-specific assessments aren't too feasible.
+
+# 4. Lastly, I exported the merged dataset for review and made that quick map
+
+# 5. Once I finish verifying those missing sites, double-checking that all the pertient columns are filled,
+#    and deciding on a fish kill delineation, we should be close to being able to dive into the temperature stuff.
+#    For now, I left the fish kill magnitude column of Till et al. (2019) as is (i.e., basically categorized as
+#    excludable, low, medium, or high magnitude events), and created columns in the Phelps et al. (2019) dataset
+#    with the minimum and maximum observed dead fish from the online MN database.
+
+# 6. If you change the working directory and add the zipped files to that directory, this should all run. Only snag
+#    Would be manually installing the "lakeattributes" package. The code to do that is hashed out below. It's some
+#    ugly code as is, but it works. I'll redo it in Markdown when we get further.
+
+###############################################################
+
+# Reset global enviroment
 rm(list=ls())
 
 #remotes::install_github("USGS-R/lakeattributes")
@@ -11,26 +36,27 @@ rm(list=ls())
 library(plyr)
 library(dplyr)
 library(ggplot2)
+library(remotes)
+library(lakeattributes)
+library(data.table)
+library(tidyverse)
+library(rworldmap)
+library(rworldxtra)
 library(sp)
 library(rgeos)
 library(sf)
-library(remotes)
-library(lakeattributes)
-library(rworldmap)
-library(rworldxtra)
+library(usmap)
 library(ggmap)
-library(data.table)
 library(ggrepel)
-library(tidyverse)
-library(gganimate)
+library(ggspatial)
 
 ###############################################################
 
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp")
 
-MN.Fish  <- read.csv(file = "data/raw/Tye_Fishkill_MN.csv", head = TRUE, sep = ",")
+MN.Fish  <- read.csv(file = "data/raw/MN_Fish_Final.csv", head = TRUE, sep = ",")
 MN.Site  <- read.csv(file = "data/raw/MN_Site_County.csv", head = TRUE, sep = ",")
-WI.Fish  <- read.csv(file = "data/raw/fish_kill_data_10_24_2018.csv", head = TRUE, sep = ",")
+WI.Fish  <- read.csv(file = "data/raw/WI_Fish_Final.csv", head = TRUE, sep = ",")
 WI.Site  <- read.csv(file = "data/raw/WI_Site.csv", head = TRUE, sep = ",")
 Site.ID  <- read.csv(file = "data/raw/Site_ID.csv", head = TRUE, sep = ",")
 #thermal  <- read.csv(file = "data/raw/thermal_metrics.csv")
@@ -38,21 +64,22 @@ Site.ID  <- read.csv(file = "data/raw/Site_ID.csv", head = TRUE, sep = ",")
 ###############################################################
 ### Preparing MN database
 ###############################################################
-### This code finds the closest waterbody (centroid) to the GPS coordinates for each MME from Phelps et al. (2019)
+### This code finds the closest waterbody centroid to the GPS coordinates for each MME from Phelps et al. (2019)
+### Finds 229/284 events; need to look up GPS coordinates or event details for remaining events.
 
 # Subset event number and coordinates from MN.Fish data
-MN.Fish.Columns <- c(1, 69:70)
+MN.Fish.Columns <- c(1, 70:71)
 MN.Fish.GPS <- MN.Fish[, MN.Fish.Columns]
-MN.Fish.GPS$Long <- as.numeric(as.character(MN.Fish.GPS$Long))
+MN.Fish.GPS$Lat <- as.numeric(as.character(MN.Fish.GPS$Lat))
 
-# Remove events without coordinates
+# Remove events without coordinates (284 events total; 229 events with coordinates)
 MN.Fish.GPS <- na.omit(MN.Fish.GPS)
 
 # Save event order for later
 MN.Fish.Events <- MN.Fish.GPS[, 1]
 
 # Calculate spatial points
-MN.Fish.SP <- SpatialPoints(MN.Fish.GPS[, 2:3])
+MN.Fish.SP  <- SpatialPoints(MN.Fish.GPS[, 2:3])
 MN.Site.SP  <- SpatialPoints(Site.ID[, 9:10])
 
 # Find nearest lake centroid for each event based on Phelps' GPS coordinates
@@ -77,13 +104,16 @@ MN.Fish.Final$Station.Name <- MN.Fish.Final$GNIS_Nm
 # Rename columns to match WI data
 colnames(MN.Fish.Final)[c(12:13)] <- c("Lat", "Long")
 
-# Remove unnecessary columns and original coordinates
-# so that all temperature estimates are based on waterbody centroids
-MN.Fish.Final[,c("Lat.x", "Long.x", "Prmnn_I", "GNIS_ID", "GNIS_Nm", "ReachCd",
-                 "FType", "FCode", "Lat", "Long", "Site", "WBIC")] <- NULL
+# Save original GPS points
+colnames(MN.Fish.Final)[c(82:83)] <- c("Lat_OG", "Long_OG")
+
+# Remove unnecessary columns
+MN.Fish.Final[,c("Site", "Lat.x", "Long.x", "Prmnn_I",
+                 "GNIS_ID", "GNIS_Nm", "ReachCd",
+                 "FType", "FCode", "WBIC")] <- NULL
 
 # Change column format
-MN.Fish.Final$Long <- as.numeric(as.character(MN.Fish.Final$Long))
+MN.Fish.Final$Lat_OG <- as.numeric(as.character(MN.Fish.Final$Lat_OG))
 
 # Remove unnecessary dataframes
 rm(MN.Fish, MN.Fish.1, MN.Fish.2, MN.Fish.GPS, MN.Fish.SP,
@@ -101,12 +131,12 @@ WI.Fish.1 <- merge(WI.Site, Site.ID, by = "site_id", all.x = FALSE, all.y = TRUE
 # Merge WI site data and Till et al. (2019) dataset
 WI.Fish.2 <- merge(WI.Fish.1, WI.Fish, by = "WBIC", all.x = FALSE, all.y = TRUE)
 
-# Remove sites without data
+# Remove sites without data (just to double-check)
 WI.Fish.Final <- subset(WI.Fish.2, !is.na(WI.Fish.2$Event))
 
 # Remove unnecessary columns
-WI.Fish.Final[,c("Event", "X", "Site", "Prmnn_I", "GNIS_ID", "GNIS_Nm", "ReachCd", "FType", "FCode",
-                 "WBIC", "Panfish", "X..FIsh.Species.Confirmed", "Game.Fish" )] <- NULL
+WI.Fish.Final[,c("WBIC", "X", "Site", "Prmnn_I", "GNIS_ID",
+                 "GNIS_Nm", "ReachCd", "FType", "FCode")] <- NULL
 
 # Remove unnecessary dataframes
 rm(WI.Fish, WI.Fish.1, WI.Fish.2, WI.Site, Site.ID)
@@ -114,10 +144,12 @@ rm(WI.Fish, WI.Fish.1, WI.Fish.2, WI.Site, Site.ID)
 ###############################################################
 ### Combine MN and WI datasets
 ###############################################################
-# Combine MN and WI datasets
+### This code combines a portion (229/284 events) of Phelps et al. (2019) with Till et al. (2019)
+
+# Merge datasets
 Fish.Final <- merge(MN.Fish.Final, WI.Fish.Final, all.x = TRUE, all.y = TRUE)
 
-# Calculate the family and species number columns
+# Create columns for fish families
 Fish.Final$Acipenseridae  <- ifelse(Fish.Final$Sturgeon == 1, 1, 0)
 Fish.Final$Amiidae        <- ifelse(Fish.Final$Bowfin == 1, 1,
                                ifelse(Fish.Final$Dogfish == 1, 1, 0))
@@ -160,40 +192,71 @@ Fish.Final$Salmonidae     <- ifelse(Fish.Final$Brown.Trout == 1, 1,
                                ifelse(Fish.Final$Cisco == 1, 1,
                                       ifelse(Fish.Final$Trout == 1, 1,
                                              ifelse(Fish.Final$Whitefish == 1, 1, 0))))
-### Combine Drum and Freshwater.Drum?
+
+# Should we combine "Drum" and "Freshwater.Drum"?
 Fish.Final$Sciaenidae     <- ifelse(Fish.Final$Drum == 1, 1,
                                ifelse(Fish.Final$Freshwater.Drum == 1, 1, 0))
 
+# Order events by date and add sequence of events to remove duplicate events
+Fish.Final$Investigation.Start.Date <- as.Date(Fish.Final$Investigation.Start.Date, format = "%d-%b-%y")
+Fish.Final <- Fish.Final[order(as.Date(Fish.Final$Investigation.Start.Date, format="%d-%b-%y")),]
+Fish.Final$Fishkill.Inv.Seq.No <- c(1:915)
 
-# Export MN.Fish.Final dataset
-write.csv(Fish.Final, "data/raw/Fish_Final_20200108.csv", row.names = TRUE)
+
+
+# Remove unnecessary columns
+Fish.Final[,c("Site.Seq.No", "Swims.Station.Id", "Stream.Miles.or.Lake.Acres.Affected",
+              "Snail", "Crayfish", "Frogs", "Event")] <- NULL
+
+# Make columns uppercase
+Fish.Final$Station.Name <- toupper(Fish.Final$Station.Name)
+Fish.Final$Cause.Detail <- toupper(Fish.Final$Cause.Detail)
+
+# Export Fish.Final dataset
+write.csv(Fish.Final, "data/raw/Fish_Final_20200315.csv", row.names = TRUE)
 
 ###############################################################
-### Test maps
+### Preliminary figures
 ###############################################################
 
-# Subset data and reformat for maps
-Fish.Map <- subset(Fish.Final, select = c(Lat, Long, Year))
+# Subset data to make some quick maps
+Fish.Map <- subset(Fish.Final, select = c(Lat, Long, Year, State))
+
+# Remove events before 2000
 Fish.Map$Year <- ifelse(Fish.Map$Year > 2000, Fish.Map$Year, NA)
 Fish.Map <- na.omit(Fish.Map)
+
+# Create new event column
 Fish.Map$Event <- c(1:635)
-Fish.Map$Year <- as.numeric(Fish.Map$Year)
 
-###############################################################
+#Fish.Map$Year <- as.numeric(Fish.Map$Year)
+# Rename columns to match ggplot functions
+Fish.Map$region <- Fish.Map$State
+Fish.Map$State <- NULL
+Fish.Map$long <- Fish.Map$Long
+Fish.Map$lat <- Fish.Map$Lat
+Fish.Map$Lat <- NULL
+Fish.Map$Long <- NULL
 
-# Heat map
-ggmap(map) +
-  stat_density2d(data = Fish.Map, aes(x = Lat, y = Long, fill = ..level.., alpha = ..level..), size = 0.3, bins = 20, geom = "polygon") +
-  borders("state") +
-  scale_fill_gradient(low = "green", high = "red") + 
-  scale_alpha(range = c(0, 0.8), guide = FALSE)
+# Remove event that is appears to be outside the study region
+Fish.Map$Event <- ifelse(Fish.Map$Event == 586, NA, Fish.Map$Event)
+Fish.Map <- na.omit(Fish.Map)
 
-###############################################################
-###############################################################
-###############################################################
+# Create state boundaries
+states   <- map_data("state")
+states   <- subset(states, region %in% c("minnesota", "wisconsin"))
 
+# Create county boundaries
+counties <- map_data("county")
+counties <- subset(counties, region %in% c("minnesota", "wisconsin"))
 
-
-
+# Quick map
+ggplot(data = states, mapping = aes(x = long, y = lat, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(data = counties, color = "darkgray", fill = "gray", size = 0.5, aes(x = long, y = lat, alpha = 0.1, group = group)) +
+  geom_polygon(data = states, color = "black", fill = NA, size = 1) +
+  stat_density2d(data = Fish.Map, aes(x = long, y = lat, fill = ..level.., alpha = ..level.., group = region), bins = 30, geom = "polygon") +
+  geom_point(data = Fish.Map, color = "black", fill = "darkolivegreen3", size = 2, shape = 21, aes(x = long, y = lat, group = region)) +
+  theme_nothing()
 
 
