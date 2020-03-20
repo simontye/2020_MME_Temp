@@ -28,9 +28,6 @@
 
 ###############################################################
 
-# Reset global enviroment
-rm(list=ls())
-
 # Install USGS Lake Attributes
 #remotes::install_github("USGS-R/lakeattributes")
 
@@ -59,6 +56,9 @@ library(naniar)
 
 ###############################################################
 
+# Reset global enviroment
+rm(list=ls())
+
 # Set working directory
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp")
 
@@ -74,8 +74,6 @@ thermal  <- inner_join(thermal, Site.ID, by = "site_id")
 ###############################################################
 ### Preparing MN database
 ###############################################################
-### This code finds the closest waterbody centroid to the GPS coordinates for each MME from Phelps et al. (2019)
-### Finds 229/284 events; need to look up GPS coordinates or event details for remaining events.
 
 # Subset event number and coordinates from MN.Fish data
 MN.Fish.Columns <- c(1, 70:71)
@@ -133,7 +131,6 @@ rm(MN.Fish, MN.Fish.1, MN.Fish.2, MN.Fish.GPS, MN.Fish.SP,
 ###############################################################
 ### Preparing WI database
 ###############################################################
-### This code changes WBIC to site_id and adds the coordinates of waterbody centroids 
 
 # Merge WI site data and NHD information
 WI.Fish.1 <- merge(WI.Site, Site.ID, by = "site_id", all.x = FALSE, all.y = TRUE)
@@ -153,12 +150,26 @@ WI.Fish.Final[,c("WBIC", "X", "Site", "Prmnn_I", "GNIS_ID",
 rm(WI.Fish, WI.Fish.1, WI.Fish.2, WI.Site, Site.ID)
 
 ###############################################################
-### Combine MN and WI datasets
+### Merge MN and WI datasets
 ###############################################################
-### This code combines a portion (229/284 events) of Phelps et al. (2019) with Till et al. (2019)
 
 # Merge datasets
 Fish.Final <- merge(MN.Fish.Final, WI.Fish.Final, all.x = TRUE, all.y = TRUE)
+
+## Order events by date and add sequence of events to remove duplicate events
+Fish.Final <- Fish.Final[order(as.Date(Fish.Final$Investigation.Start.Date, format="%d-%b-%y")),]
+Fish.Final$Fishkill.Inv.Seq.No <- c(1:915)
+
+# Remove unnecessary dataframes
+rm(MN.Fish.Final, WI.Fish.Final)
+
+# Remove unnecessary columns
+Fish.Final[,c("Site.Seq.No", "Swims.Station.Id", "Stream.Miles.or.Lake.Acres.Affected",
+              "Snail", "Crayfish", "Frogs", "Event")] <- NULL
+
+###############################################################
+### Group species observations by family
+###############################################################
 
 # Create columns for fish families
 Fish.Final$Acipenseridae  <- ifelse(Fish.Final$Sturgeon == 1, 1, 0)
@@ -207,24 +218,8 @@ Fish.Final$Salmonidae     <- ifelse(Fish.Final$Brown.Trout == 1, 1,
 Fish.Final$Sciaenidae     <- ifelse(Fish.Final$Drum == 1, 1,
                                ifelse(Fish.Final$Freshwater.Drum == 1, 1, 0))
 
-## Order events by date and add sequence of events to remove duplicate events
-Fish.Final$Investigation.Start.Date <- as.Date(Fish.Final$Investigation.Start.Date, format = "%d-%b-%y")
-Fish.Final <- Fish.Final[order(as.Date(Fish.Final$Investigation.Start.Date, format="%d-%b-%y")),]
-Fish.Final$Fishkill.Inv.Seq.No <- c(1:915)
-
-# Remove unnecessary columns
-Fish.Final[,c("Site.Seq.No", "Swims.Station.Id", "Stream.Miles.or.Lake.Acres.Affected",
-              "Snail", "Crayfish", "Frogs", "Event")] <- NULL
-
-# Make columns uppercase
-Fish.Final$Station.Name <- toupper(Fish.Final$Station.Name)
-Fish.Final$Cause.Detail <- toupper(Fish.Final$Cause.Detail)
-
 # Export Fish.Final dataset
-write.csv(Fish.Final, "data/raw/Fish_Final.csv", row.names = TRUE)
-
-# Remove unnecessary dataframes
-rm(MN.Fish.Final, WI.Fish.Final)
+#write.csv(Fish.Final, "data/raw/Fish_Final.csv", row.names = TRUE)
 
 ###############################################################
 ### Preliminary figures
@@ -286,15 +281,15 @@ rm(counties, states)
 MME <- Fish.Final %>%
   rename_all(tolower) %>%
   mutate_all(tolower) %>%
-  #dplyr::filter(min.kill.size!="excludable") %>% # Need to determine cutoff
+  #dplyr::filter(min.kill.size!="excludable") %>% # Need to determine fishkill delineation
   dplyr::select(site_id, # Changed from WBIC
                 year,
                 investigation.start.month,
                 fishkill.inv.seq.no,
-                cause.group) %>% # change from cause.category to cause.group
+                cause.group) %>% # Changed from cause.category.4
   rename(month = investigation.start.month) %>%
   mutate(dummy = 1,
-         cause.categories = cause.group) %>% # change from cause.category to cause.group
+         cause.categories = cause.group) %>% # Changed from cause.category.4
   spread(cause.categories, dummy, fill = 0) %>%
   dplyr::select(-fishkill.inv.seq.no) %>%
   distinct(site_id, year, month, .keep_all = TRUE)

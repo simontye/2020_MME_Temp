@@ -1,0 +1,308 @@
+---
+title: "Combining Datasets"
+author: "Simon Tye"
+date: "3/20/2020"
+output: github_document
+---
+
+### Progress report
+
+1. Reformatted Phelps et al. (2019) dataset to match Till et al. (2019).
+
+2. Since we need to know which lakes were affected for the water temperature assessments,
+   I matched the GPS coordinates from Phelps to the nearest waterbody centroid
+   This worked for 240/284 events in the dataset.
+
+3. Then I matched up fish taxa across datasets, merged both datasets, and created columns
+   for each fish family since species-specific assessments aren't too feasible.
+
+4. Lastly, I exported the merged dataset for review and made that quick map
+
+5. Once I verify the missing sites, double-check that all the pertinent columns are
+   filled, and we decid on the fish kill delineation, we should be able to dive into
+  the temperature stuff. For now, I left the fish kill magnitude column of Till et al. (2019) as is
+  (i.e., excludable, low, medium, or high magnitude events), and created columns in the Phelps et al.
+  (2019) dataset with the minimum and maximum observed dead fish from the online MN database.
+
+6. If you change the working directory and add the zipped files, this should all run. Only snag
+   Would be manually installing the "lakeattributes" package. The code to do that is hashed out below.
+   This is some ugly code, but it works. I'll simplify it later on.
+
+### Files in data/raw are:
+
+- `MN_Fish_Final.csv`: Minnesota fishkill data from Phelps et al. 2019
+- `MN_Site_County.csv`: List of waterbodies in Minnesota from the Minnesota Department of Natural Resources
+- `WI_Fish_Final.csv`: Wisconsin fishkill data from Till et al. 2019
+- `WI_Site.csv`: List of waterbodies in Wisconsin from the Wisconsin Department of Natural Resources
+- `Site_ID`: Attributes of waterbodies in Minnesota from the Minnesota Department of Natural Resources
+- `thermal.csv`: Historical thermal data for upper midwest lakes (1980 to 2013) from Winslow et al. 2017
+
+```{R: Install packages}
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(remotes)
+#remotes::install_github("USGS-R/lakeattributes")
+library(lakeattributes)
+library(data.table)
+library(tidyverse)
+library(rworldmap)
+library(rworldxtra)
+library(sp)
+library(rgeos)
+library(sf)
+library(usmap)
+library(ggmap)
+library(ggrepel)
+library(ggspatial)
+library(rgdal)
+library(stringr)
+library(lubridate)
+library(raster)
+library(naniar)
+```
+
+```{R: Load data}
+# Reset global environment
+rm(list=ls())
+
+# Set working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp")
+
+# Load files
+MN.Fish  <- read.csv(file = "data/raw/MN_Fish_Final.csv", head = TRUE, sep = ",")
+MN.Site  <- read.csv(file = "data/raw/MN_Site_County.csv", head = TRUE, sep = ",")
+WI.Fish  <- read.csv(file = "data/raw/WI_Fish_Final.csv", head = TRUE, sep = ",")
+WI.Site  <- read.csv(file = "data/raw/WI_Site.csv", head = TRUE, sep = ",")
+Site.ID  <- read.csv(file = "data/raw/Site_ID.csv", head = TRUE, sep = ",")
+thermal  <- read.csv(file = "data/raw/thermal_metrics.csv")
+thermal  <- inner_join(thermal, Site.ID, by = "site_id")
+```
+
+### Step 1: Minnesota fishkills
+
+This matches the GPS coordinates from Phelps et al. 2019 with the centroid of the nearest waterbody. This allows for the association of fishkill events with waterbody identifiers and thermal metrics.
+
+```{R: Minnesota}
+# Subset event number and coordinates from MN.Fish data
+MN.Fish.Columns <- c(1, 70:71)
+MN.Fish.GPS <- MN.Fish[, MN.Fish.Columns]
+MN.Fish.GPS$Lat <- as.numeric(as.character(MN.Fish.GPS$Lat))
+
+# Remove events without coordinates (284 events total; 240 events with coordinates)
+MN.Fish.GPS <- na.omit(MN.Fish.GPS)
+
+# Save event order for later
+MN.Fish.Events <- MN.Fish.GPS[, 1]
+
+# Calculate spatial points
+MN.Fish.SP  <- SpatialPoints(MN.Fish.GPS[, 2:3])
+MN.Site.SP  <- SpatialPoints(Site.ID[, 9:10])
+
+# Find nearest lake centroid for each event based on Phelps' GPS coordinates
+MN.Nearest <- apply(gDistance(MN.Fish.SP, MN.Site.SP, byid = TRUE), 2, which.min)
+
+# Add event number and nearest site_id to MN.Fish.GPS 
+MN.Fish.GPS$Event <- as.vector(MN.Fish.Events)
+MN.Fish.GPS$Site  <- as.vector(MN.Nearest)
+
+# Merge fishkill event locations and estimated site_id locations
+MN.Fish.1 <- merge(MN.Fish.GPS, Site.ID, by = "Site", all.x = TRUE, all.y = TRUE)
+
+# Subset data that was correctly matched
+MN.Fish.2 <- subset(MN.Fish.1, !is.na(MN.Fish.1$Lat.x))
+
+# Create final MN database
+MN.Fish.Final <- merge(MN.Fish.2, MN.Fish, by= "Event", all.x = TRUE, all.y = TRUE)
+
+# Transfer site_id data
+MN.Fish.Final$Station.Name <- MN.Fish.Final$GNIS_Nm
+
+# Rename columns to match WI data
+colnames(MN.Fish.Final)[c(12:13)] <- c("Lat", "Long")
+
+# Save original GPS points
+colnames(MN.Fish.Final)[c(82:83)] <- c("Lat_OG", "Long_OG")
+
+# Remove unnecessary columns
+MN.Fish.Final[,c("Site", "Lat.x", "Long.x", "Prmnn_I",
+                 "GNIS_ID", "GNIS_Nm", "ReachCd",
+                 "FType", "FCode", "WBIC", "GPS", "Notes")] <- NULL
+
+# Change column format
+MN.Fish.Final$Lat_OG <- as.numeric(as.character(MN.Fish.Final$Lat_OG))
+
+# Remove unnecessary dataframes
+rm(MN.Fish, MN.Fish.1, MN.Fish.2, MN.Fish.GPS, MN.Fish.SP,
+   MN.Site, MN.Site.SP, MN.Fish.Columns,
+   MN.Fish.Events, MN.Nearest)
+```
+
+### Step 2: Wisconsin fishkills
+
+This matches waterbody identifiers from Till et al. 2019 and the Wisconsin Department of Natural Resources. This allows for the association of both Minnesota and Wisconsin fishill events by the same type of waterbody identifier (site_id instead of WBIC)
+
+```{R: Wisconsin}
+# Merge WI site data and NHD information
+WI.Fish.1 <- merge(WI.Site, Site.ID, by = "site_id", all.x = FALSE, all.y = TRUE)
+
+# Merge WI site data and Till et al. (2019) dataset
+WI.Fish.2 <- merge(WI.Fish.1, WI.Fish, by = "WBIC", all.x = FALSE, all.y = TRUE)
+
+# Remove sites without data (none removed)
+WI.Fish.Final <- subset(WI.Fish.2, !is.na(WI.Fish.2$Event))
+
+# Remove unnecessary columns
+WI.Fish.Final[,c("WBIC", "X", "Site", "Prmnn_I", "GNIS_ID",
+                 "GNIS_Nm", "ReachCd", "FType", "FCode",
+                 "Snail", "Crayfish", "Frogs")] <- NULL
+
+# Remove unnecessary dataframes
+rm(WI.Fish, WI.Fish.1, WI.Fish.2, WI.Site, Site.ID)
+```
+
+### Step 3: Merge datasets and create 
+
+This merges the Minnesota and Wisconsin datasets, then fixes some formatting, removes unnecessary columns, and orders the events by date.
+
+```{R: Merge datasets}
+# Merge datasets
+Fish.Final <- merge(MN.Fish.Final, WI.Fish.Final, all.x = TRUE, all.y = TRUE)
+
+# Remove unnecessary columns
+Fish.Final[,c("Site.Seq.No", "Swims.Station.Id", "Stream.Miles.or.Lake.Acres.Affected",
+              "Snail", "Crayfish", "Frogs", "Event")] <- NULL
+
+# Remove unnecessary dataframes
+rm(MN.Fish.Final, WI.Fish.Final)
+
+# Order events by date and add sequence of events to remove duplicate events in Step 6
+Fish.Final <- Fish.Final[order(as.Date(Fish.Final$Investigation.Start.Date, format="%d-%b-%y")),]
+Fish.Final$Fishkill.Inv.Seq.No <- c(1:915)
+```
+
+### Step 4: Group species observations by family
+
+After reformatting the common names for continuity, I grouped species observations by family.
+
+```{R: Taxonomic organization}
+# Create columns for fish families
+Fish.Final$Acipenseridae  <- ifelse(Fish.Final$Sturgeon == 1, 1, 0)
+Fish.Final$Amiidae        <- ifelse(Fish.Final$Bowfin == 1, 1,
+                               ifelse(Fish.Final$Dogfish == 1, 1, 0))
+Fish.Final$Catostomidae   <- ifelse(Fish.Final$Bigmouth.Buffalo == 1, 1,
+                               ifelse(Fish.Final$Shorthead.Redhorse == 1, 1,
+                                      ifelse(Fish.Final$Suckerfish == 1, 1,
+                                             ifelse(Fish.Final$White.Sucker == 1, 1, 0))))
+Fish.Final$Centrarchidae  <- ifelse(Fish.Final$Bass == 1, 1,
+                               ifelse(Fish.Final$Bluegill == 1, 1,
+                                      ifelse(Fish.Final$Crappie == 1, 1,
+                                             ifelse(Fish.Final$Largemouth.Bass == 1, 1,
+                                                    ifelse(Fish.Final$Pumpkinseed == 1, 1,
+                                                           ifelse(Fish.Final$Rock.Bass == 1, 1,
+                                                                  ifelse(Fish.Final$Smallmouth.Bass == 1, 1,
+                                                                         ifelse(Fish.Final$Sunfish == 1, 1,
+                                                                                ifelse(Fish.Final$Sunnies == 1, 1, 0)))))))))
+Fish.Final$Clupeidae      <- ifelse(Fish.Final$Gizzard.Shad == 1, 1, 0)
+Fish.Final$Cyprinidae     <- ifelse(Fish.Final$Carp == 1, 1,
+                               ifelse(Fish.Final$Chub == 1, 1,
+                                      ifelse(Fish.Final$Dace == 1, 1,
+                                             ifelse(Fish.Final$Golden.Shiner == 1, 1,
+                                                    ifelse(Fish.Final$Minnow == 1, 1, 0)))))
+Fish.Final$Esocidae       <- ifelse(Fish.Final$Muskies == 1, 1,
+                               ifelse(Fish.Final$Northern.Pike == 1, 1,
+                                      ifelse(Fish.Final$Pike == 1, 1, 0)))
+Fish.Final$Gasterosteidae <- ifelse(Fish.Final$Stickleback == 1, 1, 0)
+Fish.Final$Gobiidae       <- ifelse(Fish.Final$Round.Goby == 1, 1, 0)
+Fish.Final$Ictaluridae    <- ifelse(Fish.Final$Bullhead == 1, 1,
+                               ifelse(Fish.Final$Catfish == 1, 1,
+                                      ifelse(Fish.Final$Channel.Catfish == 1, 1,
+                                             ifelse(Fish.Final$Stonecat == 1, 1, 0))))
+Fish.Final$Lepisosteidae  <- ifelse(Fish.Final$Gar == 1, 1, 0)
+Fish.Final$Osmeridae      <- ifelse(Fish.Final$Rainbow.Smelt == 1, 1, 0)
+Fish.Final$Percidae       <- ifelse(Fish.Final$Darter == 1, 1,
+                               ifelse(Fish.Final$Perch == 1, 1,
+                                      ifelse(Fish.Final$Sauger == 1, 1,
+                                             ifelse(Fish.Final$Walleye == 1, 1,
+                                                    ifelse(Fish.Final$Yellow.Perch == 1, 1, 0)))))
+Fish.Final$Salmonidae     <- ifelse(Fish.Final$Brown.Trout == 1, 1,
+                               ifelse(Fish.Final$Cisco == 1, 1,
+                                      ifelse(Fish.Final$Trout == 1, 1,
+                                             ifelse(Fish.Final$Whitefish == 1, 1, 0))))
+
+Fish.Final$Sciaenidae     <- ifelse(Fish.Final$Drum == 1, 1,
+                               ifelse(Fish.Final$Freshwater.Drum == 1, 1, 0))
+
+# Export Fish.Final dataset
+#write.csv(Fish.Final, "data/raw/Fish_Final.csv", row.names = TRUE)
+```
+
+### Step 5: Preliminary map of observations
+
+This map shows 240/284 fishkill observations across both Minnesota and Wisconsin. There are 48 observations in Phelps et al. 2019 that do not have GPS coordinates. I need to verify these with the Minnesota Department of Natural Resources database.
+
+```{R: Preliminary map}
+# Subset data for a map
+Fish.Map <- subset(Fish.Final, select = c(Lat, Long, Year, State))
+
+# Remove events before 2000
+Fish.Map$Year <- ifelse(Fish.Map$Year > 2000, Fish.Map$Year, NA)
+Fish.Map <- na.omit(Fish.Map)
+
+# Create new event column
+Fish.Map$Event <- c(1:646)
+
+# Rename columns to match ggplot functions
+Fish.Map %>%
+  rename(
+    region = State,
+    long = Long,
+    lat = Lat
+  )
+
+# Remove event that is appears to be outside the study region
+Fish.Map$Event <- ifelse(Fish.Map$Event == 586, NA, Fish.Map$Event)
+Fish.Map <- na.omit(Fish.Map)
+
+# Create state boundaries
+states   <- map_data("state")
+states   <- subset(states, region %in% c("minnesota", "wisconsin"))
+
+# Create county boundaries
+counties <- map_data("county")
+counties <- subset(counties, region %in% c("minnesota", "wisconsin"))
+
+# Preliminary map
+ggplot(data = states, mapping = aes(x = long, y = lat, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(data = counties, color = "darkgray", fill = "gray", size = 0.5, aes(x = long, y = lat, alpha = 0.1, group = group)) +
+  geom_polygon(data = states, color = "black", fill = NA, size = 1) +
+  stat_density2d(data = Fish.Map, aes(x = long, y = lat, fill = ..level.., alpha = ..level.., group = region), bins = 30, geom = "polygon") +
+  geom_point(data = Fish.Map, color = "black", fill = "darkolivegreen3", size = 2, shape = 21, aes(x = long, y = lat, group = region)) +
+  theme_nothing()
+
+# Remove map dataframes
+rm(counties, states)
+```
+
+### Step 6: Subset combined dataset for Till et al. 2019 workflow
+
+In the next iteration of code, Steps 1-5 will be condensed into a similar format as Step 6.
+
+```{R: Subset MME dataset}
+MME <- Fish.Final %>%
+  rename_all(tolower) %>%
+  rename_all(tolower) %>%
+  #dplyr::filter(min.kill.size!="excludable") %>% # Need to determine fishkill delineation
+  dplyr::select(site_id, # Changed from WBIC
+                year,
+                investigation.start.month,
+                fishkill.inv.seq.no,
+                cause.group) %>% # Changed from cause.category.4
+  rename(month = investigation.start.month) %>%
+  mutate(dummy = 1,
+         cause.categories = cause.group) %>% # Changed from cause.category.4
+  spread(cause.categories, dummy, fill = 0) %>%
+  dplyr::select(-fishkill.inv.seq.no) %>%
+  distinct(site_id, year, month, .keep_all = TRUE)
+```
