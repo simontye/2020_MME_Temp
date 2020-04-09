@@ -18,8 +18,8 @@ library(caret)
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/processed")
 
 # Re-process data. Need to add in air temperature data
-model_data_monthly <- read_csv("model_data_monthly.csv",
-                            col_types = list(site_id = col_character(),
+model_data_month <- read_csv("model_data_month.csv",
+                             col_types = list(site_id = col_character(),
                                              year = col_character(),
                                              month  = col_character(),
                                              season = col_character(),
@@ -39,12 +39,12 @@ data into training and testing sets and to scale them to allow for coefficient c
 ```{r: Partition and scale data}
 # Set seed
 set.seed(998)
-in_training <- createDataPartition(model_data_monthly$summerkill, p = .75, list = FALSE)
+in_training <- createDataPartition(model_data_month$summerkill, p = .75, list = FALSE)
 
 # Partition data
-training <- model_data_monthly  %>%
+training <- model_data_month  %>%
   slice(in_training)
-testing  <- model_data_monthly %>%
+testing  <- model_data_month %>%
   slice(-in_training)
 
 # Scale data
@@ -57,11 +57,12 @@ testing  <- predict(pre_proc_values, testing) %>%
                              ordered = TRUE),
          year = as.integer(year))
 
+# Set working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data")
+
 # Export data
-write_csv(training, "../prepared_for_modeling/training.csv")
-write_csv(testing, "../prepared_for_modeling/testing.csv")
-   bbbbbb
-   \]]]
+write_csv(training, "models/training.csv")
+write_csv(testing,  "models/testing.csv")
 ```
 
 ### Step 3: In progress
