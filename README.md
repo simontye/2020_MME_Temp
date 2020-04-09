@@ -12,12 +12,13 @@ The code to replicate this study are located in the following R Markdown files.
 
 ### Data
 All data files are categorized as either raw, processed, or model. These data are available for download via GitHub or R.
-To download from GitHub, do this. To download in R, do that.
+For GitHub, click "Release" in the top menu and then download "data_1.0.zip".
+For R, run the following chunk of code.
 
 ```{R: Download data files}
 # install.packages("piggyback")
 # require(piggyback)
 # pb_download(repo = "simontye/2020_MME_Temp" 
-#            tag  = "v0.0.1",
-#            dest = "data")
+#             tag  = "1.0",
+#             dest = "data")
 ```
