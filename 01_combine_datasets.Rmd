@@ -1,12 +1,12 @@
 ---
 title: "Combine datasets"
 author: "Mass mortality crew"
-date: "2020/04/07"
+date: "2020/05/18"
 output: github_document
 ---
 
 ### Background
-This document combines Wisconsin and Minnesota fishkill data from Till et al. (2019) and Phelps et al. (2019) datasets. The Till et al. dataset had fishkill events associated with unique waterbody identifiers (using WBIC) and the Phelps dataset had GPS coordinates for each waterbody. I used these data to associate each waterbody with the same identifier (site_id), which can be used for comparisons with water temperature data in Winslow et al. (2017). The combined dataset includes all fishkill events from Till et al. (2019) and 240/284 fishkill events from Phelps et al. (2019).
+This document combines Wisconsin and Minnesota fishkill data from Till et al. (2019) and Phelps et al. (2019) datasets. The Till dataset had fishkill events associated with unique identifiers for Wisconsin waterbodies (WBIC) and the Phelps dataset had GPS coordinates for each waterbody in Minnesota. I associated each waterbody with the same unique identifier (site_id), which can be used for comparisons with water temperature data in Winslow et al. (2017). The combined dataset includes all fishkill events from Till et al. (2019) and 240/284 fishkill events from Phelps et al. (2019). 
 
 ### Files in data/raw:
 - `MN_Fish_Final.csv`: Minnesota fishkill data from Phelps et al. (2019)
@@ -14,18 +14,18 @@ This document combines Wisconsin and Minnesota fishkill data from Till et al. (2
 - `WI_Fish_Final.csv`: Wisconsin fishkill data from Till et al. (2019)
 - `WI_Site.csv`: List of waterbodies in Wisconsin from the Wisconsin Department of Natural Resources
 - `Site_ID`: Attributes of waterbodies in Minnesota from the Minnesota Department of Natural Resources
-- `temp_air.csv`: Historical thermal data for upper midwest lakes (1980 to 2013) from Winslow et al. (2017)
-- `temp_water.csv`: Daily air temperature data from NOAA's Global Historical Climate Network
+- `temp_water.csv`: Historical thermal data for upper midwest lakes (1980 to 2013) from Winslow et al. (2017)
+- `PRISM.csv`: Monthly air temperature data from PRISM (http://prism.oregonstate.edu)
 
 ### Step 1: Load packages and data
 
-All R packages are loaded normally except for `lakeattribute`, which requires a remote install. For these procedures, all data are located in the `data/raw` subdirectory.
+For these procedures, all data are located in the `data/raw` subdirectory. All R packages are loaded normally except for `lakeattribute`, which requires a remote install.
 
 ```{r: Load packages and data}
 # Install packages
 #install.packages(c("plyr", "remotes", "data.table", "tidyverse",
 #                   "sp", "rgeos", "sf", "ggmap", "ggspatial", "rgdal",
-#                   "lubridate", "raster", "naniar", "compareDF"))
+#                   "lubridate", "raster", "naniar", "compareDF", "maps", "ggplot2"))
 #remotes::install_github("USGS-R/lakeattributes")
 
 # Load packages
@@ -44,6 +44,8 @@ library(lubridate)
 library(raster)
 library(naniar)
 library(compareDF)
+library(maps)
+library(ggplot2)
 
 # Reset global environment
 rm(list=ls())
@@ -59,16 +61,17 @@ WI.Site     <- read.csv(file = "data/raw/WI_Site.csv", head = TRUE, sep = ",")
 Site.ID     <- read.csv(file = "data/raw/Site_ID.csv", head = TRUE, sep = ",")
 temp.water  <- read.csv(file = "data/raw/temp_water.csv")
 temp.water  <- inner_join(temp.water, Site.ID, by = "site_id")
-temp.air    <- read.csv(file = "data/raw/temp_air.csv", head = FALSE, sep = ",")
+air.month   <- read.csv(file = "data/raw/PRISM.csv", head = TRUE, sep = ",")
+
 ```
 
 ### Step 2: Minnesota fishkills
 
-This matches the GPS coordinates from each fishkill event from Phelps et al. (2019) with the centroid of the nearest waterbody. This allows for the association of each event with waterbody identifiers and thermal metrics.
+This matches the GPS coordinates from each fishkill event from Phelps et al. (2019) with the centroid of the nearest waterbody. This allows for the association of each fishkilll event with a "site_id" waterbody identifier.
 
 ```{r: Minnesota fishkills}
 # Subset event number and coordinates from MN.Fish data
-MN.Fish.GPS <- MN.Fish[, c(1, 70:71)]
+MN.Fish.GPS     <- MN.Fish[, c(1, 70:71)]
 MN.Fish.GPS$Lat <- as.numeric(as.character(MN.Fish.GPS$Lat))
 
 # Subset events with coordinates (240 /284 events)
@@ -109,12 +112,12 @@ colnames(MN.Fish.Final)[c(12:13)] <- c("Lat", "Long")
 
 # Save original (OG) GPS points, in case we want those later
 colnames(MN.Fish.Final)[c(82:83)] <- c("Lat_OG", "Long_OG")
-MN.Fish.Final$Lat_OG <- as.numeric(as.character(MN.Fish.Final$Lat_OG))
+MN.Fish.Final$Lat_OG              <- as.numeric(as.character(MN.Fish.Final$Lat_OG))
 
 # Remove unnecessary columns
 MN.Fish.Final[,c("Site", "Lat.x", "Long.x", "Prmnn_I",
                  "GNIS_ID", "GNIS_Nm", "ReachCd",
-                 "FType", "FCode", "WBIC", "GPS", "Notes")] <- NULL
+                 "FType", "FCode", "GPS", "Notes")] <- NULL
 
 # Remove unnecessary dataframes
 rm(MN.Fish, MN.Fish.1, MN.Fish.Comp,
@@ -125,7 +128,7 @@ rm(MN.Fish, MN.Fish.1, MN.Fish.Comp,
 
 ### Step 3: Wisconsin fishkills
 
-This matches waterbody identifiers (WBIC) from Till et al. (2019) with waterbody information from the Wisconsin Department of Natural Resources. This allows for the association of both Minnesota and Wisconsin fishill events by the same waterbody identifier (site_id).
+This matches unique identifiers for Wisconsin waterbodies (WBIC) from Till et al. (2019) with waterbody information from the Wisconsin Department of Natural Resources. This allows for the association of both Minnesota and Wisconsin fishill events by the same unqiue waterbody identifier (site_id).
 
 ```{r: Wisconsin fishkills}
 # Merge WI site data and NHD information
@@ -138,7 +141,7 @@ WI.Fish.2 <- merge(WI.Fish.1, WI.Fish, by = "WBIC", all.x = FALSE, all.y = TRUE)
 WI.Fish.Final <- subset(WI.Fish.2, !is.na(WI.Fish.2$Event))
 
 # Remove unnecessary columns
-WI.Fish.Final[,c("WBIC", "X", "Site", "Prmnn_I", "GNIS_ID",
+WI.Fish.Final[,c("X", "Site", "Prmnn_I", "GNIS_ID",
                  "GNIS_Nm", "ReachCd", "FType", "FCode",
                  "Snail", "Crayfish", "Frogs")] <- NULL
 
@@ -156,19 +159,24 @@ Fish.Final <- merge(MN.Fish.Final, WI.Fish.Final, all.x = TRUE, all.y = TRUE)
 
 # Remove unnecessary columns
 Fish.Final[,c("Site.Seq.No", "Swims.Station.Id", "Stream.Miles.or.Lake.Acres.Affected",
-              "Snail", "Crayfish", "Frogs", "Event")] <- NULL
-
-# Remove unnecessary dataframes
-rm(MN.Fish.Final, WI.Fish.Final)
+              "Snail", "Crayfish", "Frogs", "Event", "Lat_OG", "Long_OG", "Fish.Species")] <- NULL
 
 # Order events by date and add sequence of events to remove duplicate events in Step 6
 Fish.Final <- Fish.Final[order(as.Date(Fish.Final$Investigation.Start.Date, format="%d-%b-%y")),]
+
+# Create column with order of fishkill events by date
 Fish.Final$Fishkill.Inv.Seq.No <- c(1:871)
+
+# Reorder columns for easier comparions
+Fish.Final <- Fish.Final[, c(10, 1, 9, 8, 7, 5, 6, 2, 3, 11:68)]
+
+# Remove unnecessary dataframes
+rm(MN.Fish.Final, WI.Fish.Final)
 ```
 
 ### Step 5: Group species observations by family
 
-This reformats common names across datasets then groups species observations by family.
+This reformats common names across datasets then groups species observations by taxonomic family.
 
 ```{r: Taxonomic organization}
 # Create columns for fish families
@@ -231,7 +239,7 @@ Fish.Final$Salmonidae     <- ifelse(Fish.Final$Brown.Trout == 1, 1,
 Fish.Final$Sciaenidae     <- ifelse(Fish.Final$Drum == 1, 1,
                                ifelse(Fish.Final$Freshwater.Drum == 1, 1, 0))
 # Export Fish.Final dataset
-#write.csv(Fish.Final, "data/raw/Fish_Final.csv", row.names = TRUE)
+write.csv(Fish.Final, "data/raw/Fish_Final.csv", row.names = TRUE)
 ```
 
 ### Step 6: Preliminary map of fishkill observations
@@ -242,9 +250,9 @@ This is a preliminary map of fishkill events across Minnesota and Wisconsin to v
 # Subset data for a map
 Fish.Map <- subset(Fish.Final, select = c(Lat, Long, Year, State))
 
-# Remove events before 2000
+# Remove events before 2003
 Fish.Map$Year <- ifelse(Fish.Map$Year > 2000, Fish.Map$Year, NA)
-Fish.Map <- na.omit(Fish.Map)
+Fish.Map      <- na.omit(Fish.Map)
 
 # Create new event column
 Fish.Map$Event <- c(1:646)
@@ -256,7 +264,7 @@ names(Fish.Map)[4] <- "region"
 
 # Remove event that is appears to be outside the study region
 Fish.Map$Event <- ifelse(Fish.Map$Event == 586, NA, Fish.Map$Event)
-Fish.Map <- na.omit(Fish.Map)
+Fish.Map       <- na.omit(Fish.Map)
 
 # Create state boundaries
 states   <- map_data("state")
@@ -269,11 +277,23 @@ counties <- subset(counties, region %in% c("minnesota", "wisconsin"))
 # Preliminary map
 ggplot(data = states, mapping = aes(x = long, y = lat, group = group)) + 
   coord_fixed(1.3) + 
-  geom_polygon(data = counties, color = "darkgray", fill = "gray", size = 0.5, aes(x = long, y = lat, alpha = 0.1, group = group)) +
+  geom_polygon(data = counties, aes(x = long, y = lat, alpha = 0.1, group = group), color = "darkgray", fill = "gray", size = 0.5) +
   geom_polygon(data = states, color = "black", fill = NA, size = 1) +
   stat_density2d(data = Fish.Map, aes(x = long, y = lat, fill = ..level.., alpha = ..level.., group = region), bins = 30, geom = "polygon") +
-  geom_point(data = Fish.Map, color = "black", fill = "darkolivegreen3", size = 2, shape = 21, aes(x = long, y = lat, group = region)) +
+  geom_point(data = Fish.Map, aes(x = long, y = lat, group = region),
+             color = "black", fill = "darkolivegreen3", size = 2, shape = 21) +
   theme_nothing()
+
+# Preliminary map with weather stations (run after going through air temperature step)
+#ggplot(data = states, mapping = aes(x = long, y = lat, group = group)) + 
+#  coord_fixed(1.3) + 
+#  geom_polygon(data = counties, aes(x = long, y = lat, alpha = 0.1, group = group), color = "darkgray", fill = "gray", size = 0.5) +
+#  geom_polygon(data = states, color = "black", fill = NA, size = 1) +
+#  #stat_density2d(data = Fish.Map, aes(x = long, y = lat, fill = ..level.., alpha = ..level.., group = region), bins = 30, geom = "polygon") +
+#  geom_point(data = Fish.Map, aes(x = long, y = lat, group = region),
+#             color = "black", fill = "darkolivegreen3", size = 2, shape = 21) +
+#  geom_point(data = temp.air.group2, aes(x = long_station, y = lat_station, group = NA), color = "red") +
+#  theme_nothing()
 
 # Remove unnecessary dataframes
 rm(counties, states, Fish.Map)
@@ -281,37 +301,51 @@ rm(counties, states, Fish.Map)
 
 ### Step 7: Simplify fishkill dataset
 
-This removes unnecessary columns from the combined fishkill dataset, then combines fishkill events that occurred in the same waterbody during the same month into a single event.
+This removes unused columns from the final fishkill dataset, then combines fishkill events that occurred in the same waterbody during the same month into a single fishkill event.
 
 ```{r: Simplify fishkill dataset}
-# Reformat date column
+# Reformat columns
 Fish.Final$Investigation.Start.Date <- as.Date(Fish.Final$Investigation.Start.Date, "%d-%b-%y")
+Fish.Final$WBIC <- as.character(Fish.Final$WBIC)
+Fish.Final$Lat  <- as.character(Fish.Final$Lat)
+Fish.Final$Long <- as.character(Fish.Final$Long)
 
 # Reformat Fish.Final for use with Till et al. (2019) workflow
 MME <- Fish.Final %>%
   rename_all(tolower) %>%
   mutate_all(tolower) %>%
   filter(investigation.start.date > "2003-01-01", investigation.start.date < "2014-05-01") %>%
-  # dplyr::filter(min.kill.size!="excludable") %>% # For now, including all fishkill events since the MN estimates are low
-  dplyr::select(site_id, # Changed from WBIC in Till et al. (2019) workflow
-                year, 
+  # dplyr::filter(min.kill.size!="excludable") %>% # Including all fishkill events for now since the MN estimates are low
+  dplyr::select(site_id,
+                lat,
+                long,
+                year,
                 investigation.start.month,
                 fishkill.inv.seq.no,
-                cause.group) %>% # Changed from cause.category.4 in Till et al. (2019) workflow
+                cause.group) %>%
   rename(month = investigation.start.month) %>%
   mutate(dummy = 1,
          cause.categories = cause.group) %>% 
   spread(cause.categories, dummy, fill = 0) %>%
-  dplyr::select(-fishkill.inv.seq.no) %>%
+  #dplyr::select(-fishkill.inv.seq.no) %>%
   distinct(site_id, year, month, .keep_all = TRUE)
-  
+
+# Remove white space in thermal stress
+colnames(MME)[c(11)] <- c("thermal_stress")
+
+# Remove NAs
+MME <- na.omit(MME)
+
+# Export MME localities dataset
+write.csv(MME, "data/raw/MME.csv", row.names = TRUE)
+
 # Remove unnecessary dataframes
 rm(Fish.Final)
 ```
 
 ### Step 8: Simplify water temperature dataset
 
-This removes water temperature data that predates the fishkill dataset, then processes the annual and monthly data separately for computational efficiency. For waterbodies with multiple site_ids, we average the annual and monthly data. For monthly data, the month is extracted from the variable name and turned into a datetime. Lastly, two features are added:
+These methods follow Till et al. (2019). In brieft, this removes water temperature data that predates the fishkill dataset, then processes the annual and monthly data separately for computational efficiency. For waterbodies with multiple site_ids, we average the annual and monthly data. For monthly data, the month is extracted from the variable name and turned into a datetime. Lastly, two features are added:
 
 - `z-score`: calcuated for each water temperature variable via subtraction of the lake x monthly average then division by the SD.
 - `water.temp`: single PC for water temperature data.
@@ -342,7 +376,8 @@ water.annual <- temp.water %>%
          cumulative_above_0 = gdd_wtr_0c,
          cumulative_above_5 = gdd_wtr_5c,
          cumulative_above_10 = gdd_wtr_10c) %>%
-  mutate(log_schmidt = log(schmidt + .00001))
+  mutate(log_schmidt = log(schmidt + .00001)) %>%
+  dplyr::select(-prmnn_i, -gnis_id, -reachcd, -ftype, -fcode, -lat, -long)
 
 # Reformat monthly water temperature data
 water.month <- temp.water %>%
@@ -411,142 +446,233 @@ water.month <- water.month %>%
 rm(water.pca, water.pr, temp.water)
 ```
 
-### Step 9: Simplify air temperature dataset
+### Step 9a: Simplify air temperature dataset (NOAA)
 
-First, I used Bash to concatenate all the ~6 month chunks of daily temperature data from NOAA. This code removes the headers and merges all the raw .csv files. Column names are manually added to the joined dataset and all remaining steps are performed in R.
+I manually downloaded daily air temperature data from NOAA for all Minnesota and Wisconsin weather stations ((https://www.ncdc.noaa.gov/cdo-web/search?datasetid=GHCND). Their online portal only allowed for downloads of ~6 months of data, so I  used Bash to concatenate all the daily temperature data files. To do this, I had to remove all headers and merge all the raw .csv files. Column names are then manually added to the joined dataset in R. The original air temperature files are located in "data/raw/temp_air", and the concatenated file (air_temp.csv) is located in data/raw/.
 
-```{bash: Merge air temperature data}
-cd /Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/raw/temp
-awk 'FNR>1' *.csv > ../air_temp.csv
+Note: There are many missing data from NOAA weather stations, so I am going to use PRISM from Oregon State (http://prism.oregonstate.edu) for historical air temperature estimates and CMIP5 for future temperrature projections (https://gdo-dcp.ucllnl.org/downscaled_cmip_projections/dcpInterface.html). More information on these datasets in Step 9b.
+
+```{bash: Merge air temperature data (NOAA)}
+#cd /Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/raw/temp
+#awk 'FNR>1' *.csv > ../air_temp.csv
 ```
 
 I then reformatted the date columns across the datasets and calculate the monthly and annual averages of maximum, mean, and minimum air temperatures. Weather stations were then associated with the nearest waterbody centroid using their respective GPS coordinates. I did not scale and perform a pca for the monthly air temperature, as was done with the monthly water temperature, but there is code hashed out to do so if you think that is necessary.
 
-```{r: Simplify air temperature dataset}
-## Combine all air temperature datasets (Bash)
-# Change working directory to folder with the air temperature files
-#cd /Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/raw/temp
+```{r: Simplify air temperature dataset (NOAA)}
+## Add headers for air temperature dataset
+#names(temp.air) <- c("station_id", "station_name", "lat_station", "long_station",
+#                     "elevation", "date", "mean_temp", "mean_attributes",
+#                     "max_temp", "max_attributes", "min_temp", "min_attributes",
+#                     "obs_temp", "obs_attributes")
+#
+## Remove unnecessary columns
+#temp.air[,c("station_name", "elevation", "mean_attributes", "max_attributes",
+#            "min_attributes", "obs_temp", "obs_attributes")] <- NULL
+#
+## Substitute / for - to condense dates
+#temp.air$date <- gsub(pattern = "-", replacement = "/", x = temp.air$date)
+#
+## Split dates into year, month, and day columns
+#temp.air[8:10] <- do.call('rbind', strsplit(as.character(temp.air$date), '/', fixed = TRUE))
+#
+## Add headers for air temperature dataset
+#names(temp.air)[8:10] <- c("year", "month", "day")
+#
+## Reorganize date columns (NOAA used two different date formats; one for rows 1:35865, the other for rows 35966:2462091)
+#month <- temp.air$year[1:35865]
+#day   <- temp.air$month[1:35865]
+#year  <- temp.air$day[1:35865]
+#temp.air$year[1:35865]  <- paste0("20", year)
+#temp.air$month[1:35865] <- month
+#temp.air$day[1:35865]   <- day
+#
+## Remove unnecessary values
+#rm(day, month, year)
+#
+## Subset data to timespan of interest
+#temp.air$date <- paste(temp.air$year, temp.air$month, temp.air$day, sep = "-")
+#temp.air$date <- as.Date(temp.air$date, format = "%Y-%m-%d")
+#temp.air      <- subset(temp.air, date > "2003-01-01" & date < "2014-05-01")
+#
+#################################################################################
+#
+## Remove weather stations that lack data for comparison
+##temp.air2 <- na.omit(temp.air)
+#
+## Group coordinates by station_id
+#temp.air.group <- temp.air %>%
+#  dplyr::select(station_id, lat_station, long_station) %>%
+#  group_by(station_id) %>%
+#  summarize(
+#    lat_station  = mean(lat_station),
+#    long_station = mean(long_station)) %>%
+#  ungroup()
+#
+## Save station identification number (station_id) for later
+#temp.station <- temp.air.group[1]
+#
+## Create spatial points for weather stations and waterbodies
+#temp.station.sp  <- SpatialPoints(temp.air.group[, 2:3])
+##temp.site.sp     <- SpatialPoints(Site.ID[, 9:10])
+#MME$lat          <- as.numeric(MME$lat)
+#MME$long         <- as.numeric(MME$long)
+#temp.site.sp     <- SpatialPoints(MME[, 2:3])
+#
+## Find nearest lake centroid for each weather station
+##temp.nearest <- apply(gDistance(temp.station.sp, temp.site.sp, byid = TRUE, hausdorff = TRUE), 2, which.min)
+##temp.nearest <- gDistance(temp.station.sp, temp.site.sp, byid = TRUE, hausdorff = TRUE)
+#temp.nearest <- apply(gDistance(temp.site.sp, temp.station.sp, byid = TRUE, hausdorff = TRUE), 2, which.min)
+#
+## Merge event number and nearest site_id data
+#MME$Site <- as.vector(temp.nearest)
+#
+## Create Site column
+#temp.station$Site <- 1:1250
+#
+## Merge fishkill event locations and estimated site_id locations
+##temp.station <- merge(temp.nearest, Site.ID, by = "Site", all.x = TRUE, all.y = TRUE)
+#temp.station <- merge(MME, temp.station, by = "Site", all.x = TRUE, all.y = TRUE)
+#temp.station <- subset(temp.station, !is.na(temp.station$site_id))
+#
+## Reformat annual air temperature data
+#air.annual <- temp.air %>%
+#  mutate(station_id = as.character(station_id),
+#         lat_station = as.numeric(lat_station),
+#         long_station = as.numeric(long_station),
+#         mean_temp = as.numeric(mean_temp),
+#         max_temp = as.numeric(max_temp),
+#         min_temp = as.numeric(min_temp),
+#         year = as.character(year),
+#         month = as.character(month),
+#         day = as.character(day)) %>%
+#  dplyr::select(mean_temp, max_temp, min_temp, station_id, year) %>%
+#  group_by(station_id, year) %>%
+#  summarize(
+#    mean_temp = mean(mean_temp),
+#    max_temp  = mean(max_temp),
+#    min_temp  = mean(min_temp)) %>%
+#  ungroup()
+#  
+## Reformat monthly air temperature data
+#air.month <- temp.air %>%
+#  mutate(station_id = as.character(station_id),
+#         lat_station = as.numeric(lat_station),
+#         long_station = as.numeric(long_station),
+#         mean_temp = as.numeric(mean_temp),
+#         max_temp = as.numeric(max_temp),
+#         min_temp = as.numeric(min_temp),
+#         year = as.character(year),
+#         month = as.character(month),
+#         day = as.character(day)) %>%
+#  dplyr::select(mean_temp, max_temp, min_temp, station_id, month, year) %>%
+#  group_by(station_id, year, month) %>%
+#  summarize(
+#    mean_temp = mean(mean_temp),
+#    max_temp  = mean(max_temp),
+#    min_temp  = mean(min_temp)) %>%
+#  ungroup()
+#
+## Remove leading zero from months
+#air.month$month <- gsub("(^|[^0-9])0+", "\\1", air.month$month, perl = TRUE)
+#
+## Relabel months
+#air.month$month <- ifelse(air.month$month == "12", "dec",
+#                           ifelse(air.month$month == "1", "jan",
+#                                  ifelse(air.month$month == "2", "feb",
+#                                         ifelse(air.month$month == "3", "mar",
+#                                                ifelse(air.month$month == "4", "apr",
+#                                                       ifelse(air.month$month == "5", "may",
+#                                                              ifelse(air.month$month == "6", "jun",
+#                                                                     ifelse(air.month$month == "7", "jul",
+#                                                                            ifelse(air.month$month == "8", "aug",
+#                                                                                   ifelse(air.month$month == "9", "sep",
+#                                                                                          ifelse(air.month$month == "10", "oct",
+#                                                                                                 ifelse(air.month$month == "11", "nov", "NA"))))))))))))
+#
+## Group months by season
+#air.month <- air.month %>%
+#  mutate(season = fct_collapse(month,
+#                               "winter" = "dec",
+#                               "winter" = "jan",
+#                               "winter" = "feb",
+#                               "spring" = "mar",
+#                               "spring" = "apr",
+#                               "spring" = "may",
+#                               "summer" = "jun",
+#                               "summer" = "jul",
+#                               "summer" = "aug",
+#                               "fall"   = "sep",
+#                               "fall"   = "oct",
+#                               "fall"   = "nov"))
+#
+## Create final monthly air temperature dataset
+##air.month <- merge(temp.station, air.month, by = "station_id", all.x = TRUE, all.y = TRUE)
+#air.month <- merge(temp.station, air.month, by = c("station_id", "month", "year"), all.x = TRUE, all.y = TRUE)
+#air.month <- subset(air.month, !is.na(air.month$station_id))
+#
+## Create final annual air temperature dataset
+##air.annual <- merge(temp.station, air.annual, by = "station_id", all.x = TRUE, all.y = TRUE)
+#air.annual <- merge(temp.station, air.annual, by = c("station_id", "month", "year"), all.x = TRUE, all.y = TRUE)
+#air.annual <- subset(air.annual, !is.na(air.annual$station_id))
+#
+## Remove unnecessary columns
+#air.month[,c("Site", "Prmnn_I", "GNIS_ID", "GNIS_Nm", "ReachCd",
+#                 "FType", "FCode")] <- NULL
+#air.annual[,c("Site", "Prmnn_I", "GNIS_ID", "GNIS_Nm", "ReachCd",
+#                 "FType", "FCode")] <- NULL
+#
+# Perform PCA to collapse collinear covariates into a single variable (pca.air)
+#air.pr <- air.month %>%
+#  dplyr::select(max_temp, mean_temp, min_temp) %>%
+#  prcomp(center = TRUE, scale = TRUE)
+#
+## Isolate PCA results into separate dataframe
+#air.pca <- air.month %>%
+#  dplyr::select(max_temp, mean_temp, min_temp) %>%
+#  as.matrix() %*% air.pr$rotation[,1]
+#
+## Add PCA results into monthly water temperature data
+#air.month <- air.month %>%
+#  add_column(air.pca)
+#
+## Remove unnecessary dataframes
+#rm(temp.air, temp.air.group, temp.site.sp, temp.station, temp.station.sp, temp.nearest)
+```
 
-# Concatenate temperature files
-#awk 'FNR>1' *.csv > ../air_temp.csv
+### Step 9b: Simplify air temperature dataset (PRISM)
 
-# Add headers for air temperature dataset
-names(temp.air) <- c("station_id", "station_name", "lat_station", "long_station",
-                     "elevation", "date", "mean_temp", "mean_attributes",
-                     "max_temp", "max_attributes", "min_temp", "min_attributes",
-                     "obs_temp", "obs_attributes")
+Since there were many missing data from NOAA weather stations, I used historial air temperature estimates from PRISM Climate Group at Oregon State University (http://prism.oregonstate.edu). To do so, I exported the final fishkill dataset (MME) and submitted the latitude and longitude coordinates with a unique identifier (fishkill.inv.seq.no) for each event (MME_Localities_1/2.csv). All of these files are located in "data/raw/temp_air/PRISM".
 
-# Remove unnecessary columns
-temp.air[,c("station_name", "elevation", "mean_attributes", "max_attributes",
-            "min_attributes", "obs_temp", "obs_attributes")] <- NULL
+For future air temperature, I downloaded the highest spatial resolution projections available (https://gdo-dcp.ucllnl.org/downscaled_cmip_projections/dcpInterface.html#Welcome) for all Coupled Model Intercomparison Project Phase 5 (CMIP5) models used in Winslow et al. (2017). These models are based on RCP 8.5, as were water temperature projections from Winslow et al. (2017), and include ACCESS, CNRM, GFDL, IPSL, MIROC5, and MRI. All of these files are located in "data/raw/temp_air/CMIP5".
 
-# Substitute / for - to condense dates
-temp.air$date <- gsub(pattern = "-", replacement = "/", x = temp.air$date)
+```{r: Simplify air temperature dataset (CMIP5)}
+# Split date
+air.month[9:10] <- do.call('rbind', strsplit(as.character(air.month$Date), '-', fixed = TRUE))
 
-# Split dates into year, month, and day columns
-temp.air[8:10] <- do.call('rbind', strsplit(as.character(temp.air$date), '/', fixed = TRUE))
+# Remove old date column
+air.month[,c("Date", "Longitude", "Latitude", "Elevation..ft.")] <- NULL
 
-# Add headers for air temperature dataset
-names(temp.air)[8:10] <- c("year", "month", "day")
+# Rename columns
+colnames(air.month)[c(1:6)] <- c("fishkill.inv.seq.no", "temp_min", "temp_mean", "temp_max", "year", "month")
 
-# Reorganize date columns (NOAA used two different date formats)
-month <- temp.air$year[1:35865]
-day   <- temp.air$month[1:35865]
-year  <- temp.air$day[1:35865]
-temp.air$year[1:35865] <- paste0("20", year)
-temp.air$month[1:35865] <- month
-temp.air$day[1:35865] <- day
-
-# Subset data to timespan of interest
-temp.air$date <- paste(temp.air$year, temp.air$month, temp.air$day, sep = "-")
-temp.air$date <- as.Date(temp.air$date, format = "%Y-%m-%d")
-temp.air <- subset(temp.air, date > "2003-01-01" & date < "2014-05-01")
-
-# Group coordinates by station_id
-temp.air.group <- temp.air %>%
-  dplyr::select(station_id, lat_station, long_station) %>%
-  group_by(station_id) %>%
-  summarize(
-    lat_station  = mean(lat_station),
-    long_station = mean(long_station)) %>%
-  ungroup()
-
-# Save station_id for later
-temp.station <- temp.air.group[1]
-
-# Create spatial points
-temp.station.sp  <- SpatialPoints(temp.air.group[, 2:3])
-temp.site.sp     <- SpatialPoints(Site.ID[, 9:10])
-
-# Find nearest lake centroid for each weather station
-temp.nearest <- apply(gDistance(temp.station.sp, temp.site.sp, byid = TRUE), 2, which.min)
-
-# Merge event number and nearest site_id data
-temp.station$Site <- as.vector(temp.nearest)
-
-# Merge fishkill event locations and estimated site_id locations
-temp.station <- merge(temp.station, Site.ID, by = "Site", all.x = TRUE, all.y = TRUE)
-temp.station <- d(temp.station, !is.na(temp.station$station_id))
-
-# Remove unnecessary dataframe
-rm(day, month, year, temp.nearest)
-
-# Reformat annual air temperature data
-air.annual <- temp.air %>%
-  mutate(station_id = as.character(station_id),
-         lat_station = as.numeric(lat_station),
-         long_station = as.numeric(long_station),
-         mean_temp = as.numeric(mean_temp),
-         max_temp = as.numeric(max_temp),
-         min_temp = as.numeric(min_temp),
-         year = as.character(year),
-         month = as.character(month),
-         day = as.character(day)) %>%
-  dplyr::select(mean_temp, max_temp, min_temp, station_id, year) %>%
-  # na.omit() %>%
-  group_by(station_id, year) %>%
-  summarize(
-    mean_temp = mean(mean_temp),
-    max_temp  = mean(max_temp),
-    min_temp  = mean(min_temp)) %>%
-  ungroup()
-  
-# Reformat monthly air temperature data
-air.month <- temp.air %>%
-  mutate(station_id = as.character(station_id),
-         lat_station = as.numeric(lat_station),
-         long_station = as.numeric(long_station),
-         mean_temp = as.numeric(mean_temp),
-         max_temp = as.numeric(max_temp),
-         min_temp = as.numeric(min_temp),
-         year = as.character(year),
-         month = as.character(month),
-         day = as.character(day)) %>%
-  dplyr::select(mean_temp, max_temp, min_temp, station_id, month, year) %>%
-  # na.omit() %>%
-  group_by(station_id, year, month) %>%
-  summarize(
-    mean_temp = mean(mean_temp),
-    max_temp  = mean(max_temp),
-    min_temp  = mean(min_temp)) %>%
-  ungroup()
 
 # Remove leading zero from months
 air.month$month <- gsub("(^|[^0-9])0+", "\\1", air.month$month, perl = TRUE)
 
 # Relabel months
 air.month$month <- ifelse(air.month$month == "12", "dec",
-                           ifelse(air.month$month == "1", "jan",
-                                  ifelse(air.month$month == "2", "feb",
-                                         ifelse(air.month$month == "3", "mar",
-                                                ifelse(air.month$month == "4", "apr",
-                                                       ifelse(air.month$month == "5", "may",
-                                                              ifelse(air.month$month == "6", "jun",
-                                                                     ifelse(air.month$month == "7", "jul",
-                                                                            ifelse(air.month$month == "8", "aug",
-                                                                                   ifelse(air.month$month == "9", "sep",
-                                                                                          ifelse(air.month$month == "10", "oct",
-                                                                                                 ifelse(air.month$month == "11", "sep", "NA"))))))))))))
+                          ifelse(air.month$month == "1", "jan",
+                                 ifelse(air.month$month == "2", "feb",
+                                        ifelse(air.month$month == "3", "mar",
+                                               ifelse(air.month$month == "4", "apr",
+                                                      ifelse(air.month$month == "5", "may",
+                                                             ifelse(air.month$month == "6", "jun",
+                                                                    ifelse(air.month$month == "7", "jul",
+                                                                           ifelse(air.month$month == "8", "aug",
+                                                                                  ifelse(air.month$month == "9", "sep",
+                                                                                         ifelse(air.month$month == "10", "oct",
+                                                                                                ifelse(air.month$month == "11", "nov", "NA"))))))))))))
 
 # Group months by season
 air.month <- air.month %>%
@@ -564,36 +690,19 @@ air.month <- air.month %>%
                                "fall"   = "oct",
                                "fall"   = "nov"))
 
-# Create final monthly air temperature dataset
-air.month <- merge(temp.station, air.month, by = "station_id", all.x = TRUE, all.y = TRUE)
-air.month <- subset(air.month, !is.na(air.month$station_id))
+# Reformat annual air temperature data
+air.annual <- air.month %>%
+  group_by(fishkill.inv.seq.no, year) %>%
+  summarize(
+    temp_min   = mean(temp_min),
+    temp_mean  = mean(temp_mean),
+    temp_max   = mean(temp_max)) %>%
+  ungroup()
 
-# Create final annual air temperature dataset
-air.annual <- merge(temp.station, air.annual, by = "station_id", all.x = TRUE, all.y = TRUE)
-air.annual <- subset(air.annual, !is.na(air.annual$station_id))
+# Reformat columns
+air.annual$fishkill.inv.seq.no <- as.character(air.annual$fishkill.inv.seq.no)
+air.month$fishkill.inv.seq.no  <- as.character(air.month$fishkill.inv.seq.no)
 
-# Remove unnecessary columns
-air.month[,c("Site", "Prmnn_I", "GNIS_ID", "GNIS_Nm", "ReachCd",
-                 "FType", "FCode", "WBIC")] <- NULL
-air.annual[,c("Site", "Prmnn_I", "GNIS_ID", "GNIS_Nm", "ReachCd",
-                 "FType", "FCode", "WBIC")] <- NULL
-
-# Perform PCA to collapse collinear covariates into a single variable (pca.air)
-#air.pr <- air.month %>%
-#  dplyr::select(max_temp, mean_temp, min_temp) %>%
-#  prcomp(center = TRUE, scale = TRUE)
-#
-## Isolate PCA results into separate dataframe
-#air.pca <- air.month %>%
-#  dplyr::select(max_temp, mean_temp, min_temp) %>%
-#  as.matrix() %*% air.pr$rotation[,1]
-#
-## Add PCA results into monthly water temperature data
-#air.month <- air.month %>%
-#  add_column(air.pca)
-
-# Remove unnecessary dataframes
-rm(temp.air, temp.air.group, temp.site.sp, temp.station, temp.station.sp)
 ```
 
 ### Step 10: Merge fishkill and thermal datasets
@@ -601,35 +710,68 @@ rm(temp.air, temp.air.group, temp.site.sp, temp.station, temp.station.sp)
 This merges the fishkill, water temperature, and air temperature datasets separately for monthly and annual data. Waterbodies that experienced a fishkill event but lack modeled water temperature data are removed.
 
 ```{r: Merge fishkill and thermal datasets}
-# Merge monthly data
-df.month <- water.month %>%
-  left_join(air.month, by = c("year","month", "site_id")) %>%
-  left_join(MME, by = c("year", "month", "site_id"))
+# Save current global environment
+save.image("test.RData")
 
-# Create columns for each fishkill cause type
+# Load global environment
+load("test.RData")
+
+# Merge monthly air temperature data and MME dataframe
+df.month <- air.month %>%
+  left_join(MME, by = c("year", "month", "fishkill.inv.seq.no"))
+
+# Fill in empty values for site_id, lat, and long
 df.month <- df.month %>%
-  mutate(summerkill = ifelse(is.na(summerkill), 0, summerkill),
-         winterkill = ifelse(is.na(winterkill), 0, winterkill),
-         anthropogenic = ifelse(is.na(anthropogenic), 0, anthropogenic),
-         infectious = ifelse(is.na(infectious), 0, infectious),
-         unknown = ifelse(is.na(unknown), 0, unknown))
+  fill(c(site_id, lat, long), .direction = c("down")) %>%
+  dplyr::select(-season, -fishkill.inv.seq.no)
 
-# Merge annual data
-df.annual <- water.annual %>%
-  left_join(air.annual, by = c("year", "site_id")) %>%
-  left_join(MME, by = c("year", "site_id"))
+# Fill in empty values for MME causes
+df.month$cause.group[is.na(df.month$cause.group)]       <- "none"
+df.month$anthropogenic[is.na(df.month$anthropogenic)]   <- "0"
+df.month$infectious[is.na(df.month$infectious)]         <- "0"
+df.month$summerkill[is.na(df.month$summerkill)]         <- "0"
+df.month$thermal_stress[is.na(df.month$thermal_stress)] <- "0"
+df.month$unknown[is.na(df.month$unknown)]               <- "0"
+df.month$winterkill[is.na(df.month$winterkill)]         <- "0"
 
-# Create columns for each fishkill cause type
+# Merge monthly water temperature
+df.month <- df.month %>%
+  left_join(water.month, by = c("year", "month", "site_id")) %>%
+  dplyr::select(-date, -lat, -long)
+
+# Reorder columns
+df.month <- df.month[, c(6, 4:5, 24, 1:3, 14:23, 25)]
+
+# Rename columns for continuity
+colnames(df.month)[c(5:7)] <- c("min_air", "mean_air", "max_air")
+
+# Merge annual air temperature data and MME dataframe
+df.annual <- air.annual %>%
+  left_join(MME, by = c("year", "fishkill.inv.seq.no"))
+
+# Fill in empty values for site_id, lat, and long
 df.annual <- df.annual %>%
-  mutate(summerkill = ifelse(is.na(summerkill), 0, summerkill),
-         winterkill = ifelse(is.na(winterkill), 0, winterkill),
-         anthropogenic = ifelse(is.na(anthropogenic), 0, anthropogenic),
-         infectious = ifelse(is.na(infectious), 0, infectious),
-         unknown = ifelse(is.na(unknown), 0, unknown))
+  fill(c(site_id, lat, long), .direction = c("down")) %>%
+  dplyr::select(-month, -fishkill.inv.seq.no, -lat, -long)
 
-# Remove unnecessary columns
-df.month[,c("Lat", "Long", "lat", "long", "season.y")] <- NULL
-df.annual[,c("Lat", "Long", "lat", "long")] <- NULL
+# Fill in empty values for MME causes
+df.annual$cause.group[is.na(df.annual$cause.group)]       <- "none"
+df.annual$anthropogenic[is.na(df.annual$anthropogenic)]   <- "0"
+df.annual$infectious[is.na(df.annual$infectious)]         <- "0"
+df.annual$summerkill[is.na(df.annual$summerkill)]         <- "0"
+df.annual$thermal_stress[is.na(df.annual$thermal_stress)] <- "0"
+df.annual$unknown[is.na(df.annual$unknown)]               <- "0"
+df.annual$winterkill[is.na(df.annual$winterkill)]         <- "0"
+
+# Merge annual water temperature
+df.annual <- df.annual %>%
+  left_join(water.annual, by = c("year", "site_id"))
+
+# Reorder columns
+df.annual <- df.annual[, c(5, 1, 6:12, 2:4, 15:20, 22)]
+
+# Rename columns for continuity
+colnames(df.annual)[c(10:12)] <- c("min_air", "mean_air", "max_air")
 
 # Remove unnecessary dataframes
 rm(air.annual, air.month, water.annual, water.month, MME)
@@ -640,11 +782,8 @@ rm(air.annual, air.month, water.annual, water.month, MME)
 This merges spatial covariates for each waterbody into the dataset, then adds 2010 population data from the US Census Bureau (https://www.census.gov/geo/maps-data/data/tiger-data.html) by matching waterbodies to the nearest GPS coordinates.
 
 ```{r: Add spatial data}
-# Set working directory
-setwd('data/raw')
-
 # Load spatial data
-spatial <- readOGR(dsn=path.expand("lake_shapes"), layer = 'model_lakes')
+spatial <- readOGR(dsn=path.expand("data/raw/lake_shapes"), layer = "model_lakes")
 spatial_df <- coordinates(spatial) %>%
   as.data.frame() %>%
   add_column(site_id = as.character(spatial@data$site_id)) %>%
@@ -668,7 +807,7 @@ df.month <- df.month %>%
   inner_join(spatial_df, by = "site_id")
 
 # Add 2010 census data
-census <- readOGR(dsn=path.expand("census_data"), layer = 'tabblock2010_55_pophu')
+census <- readOGR(dsn=path.expand("data/raw/census_data"), layer = "tabblock2010_55_pophu")
 census_df <- coordinates(census) %>%
   as.data.frame() %>%
   add_column(population = census@data$POP10) %>%
@@ -697,14 +836,13 @@ df.month <- df.month %>%
 # Remove unnecessary dataframe
 rm(Site.ID, spatial, spatial_df, census, census_df)
 
-# Set working directory
-setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data")
-
 # Save processed annual and monthly data
-write_csv(df.annual, "processed/model_data_annual.csv")
-write_csv(df.month,  "processed/model_data_month.csv")
+write_csv(df.annual, "data/processed/model_data_annual.csv")
+write_csv(df.month,  "data/processed/model_data_month.csv")
 ```
 
 ### Step 12: Run 02_prepare_models.Rmd
 
-
+######################################
+######################################
+######################################
