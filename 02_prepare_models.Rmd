@@ -1,7 +1,7 @@
 ---
 title: "Prepare models"
 author: "Mass mortality crew"
-date: "2020/04/08"
+date: "2020/05/20"
 output: github_document
 ---
 
@@ -10,21 +10,25 @@ output: github_document
 This is a second pass at data processing to prepare data for model fitting.
 
 ```{r: Load packages and data}
+# Install packages
+#install.packages(c("caret"))
+
 # Load packages
 library(tidyverse)
 library(caret)
 
-# Set working directory
+# Change working directory
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/processed")
 
 # Re-process data. Need to add in air temperature data
-model_data_month <- read_csv("model_data_month.csv",
+model_historical <- read_csv("model_historical.csv",
                              col_types = list(site_id = col_character(),
-                                             year = col_character(),
-                                             month  = col_character(),
-                                             season = col_character(),
-                                             summerkill = col_character(),
-                                             ice_duration = col_double())) %>%
+                                              state = col_character(), # Added for comparison
+                                              year = col_character(),
+                                              month  = col_character(),
+                                              season = col_character(),
+                                              summerkill = col_character(),
+                                              ice_duration = col_double())) %>%
   select(-cause.category.4, -anthropogenic, -infectious, -unknown, -winterkill) %>%
   mutate(summerkill = fct_recode(summerkill,
                                  "neg" = "0",
@@ -33,18 +37,17 @@ model_data_month <- read_csv("model_data_month.csv",
 
 ### Step 2: Partition and scale data
 
-The two primary steps carried out here is to partition the
-data into training and testing sets and to scale them to allow for coefficient comparison.
+This partitions the data into training and testing sets, then scale thems to allow for coefficient comparison.
 
 ```{r: Partition and scale data}
 # Set seed
-set.seed(998)
-in_training <- createDataPartition(model_data_month$summerkill, p = .75, list = FALSE)
+set.seed(666)
+in_training <- createDataPartition(model_historical$summerkill, p = .75, list = FALSE)
 
 # Partition data
-training <- model_data_month  %>%
+training <- model_historical  %>%
   slice(in_training)
-testing  <- model_data_month %>%
+testing  <- model_historical %>%
   slice(-in_training)
 
 # Scale data
@@ -57,7 +60,7 @@ testing  <- predict(pre_proc_values, testing) %>%
                              ordered = TRUE),
          year = as.integer(year))
 
-# Set working directory
+# Change working directory
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data")
 
 # Export data
