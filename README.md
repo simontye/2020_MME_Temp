@@ -55,6 +55,6 @@ For R, run the following chunk of code.
 # install.packages("piggyback")
 # require(piggyback)
 # pb_download(repo = "simontye/2020_MME_Temp" 
-#             tag  = "1.0",
+#             tag  = "1.1",
 #             dest = "data")
 ```
