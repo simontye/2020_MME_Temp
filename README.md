@@ -6,11 +6,9 @@ I have combined the Minnesota (Phelps et al. 2019) and Wisconsin (Till et al. 20
 ## Fishkillls
 The full dataset contains 915 fishkill events. There are 561 fishkill events that fit the criteria outlined below. I need to verify these steps and see if we can add any of these events via other methods:
 
-1. Events that occurred in waterways or did not have waterbody names and coordinates were removed. There were 44 events that were in waterways or did not have coordinates in the MN dataset (915 to 871).
-
-2. Events that occurred in the same waterbody during the same month were considered a single event. There were 235 events that were removed based on this simplication (871 to 636).
-
-3. Events whose identifiers did not match with full list of waterbodies for WI, MN, and MI (Site.ID). There were 75 events in which the WBIC from WI did not match with a WBIC and site_id from this list (636 to 561).
+1. `Events that occurred in waterways or did not have waterbody names and coordinates were removed.` There were 44 events that were in waterways or did not have coordinates in the MN dataset (915 to 871).
+2. `Events that occurred in the same waterbody during the same month were considered a single event.` There were 235 events that were removed based on this simplication (871 to 636).
+3. `Events whose identifiers did not match with full list of waterbodies for WI, MN, and MI (Site.ID).` There were 75 events in which the WBIC from WI did not match with a WBIC and site_id from this list (636 to 561).
 
 ## Concurrent temperature estimates
 Concurrent water temperature estimates (Winslow et al. 2017) include surface and benthic temperature estimates and are waterbody-specific throughout the study region. Concurrent air temperature estimates (~4 km resolution) were obtained from PRISM (http://prism.oregonstate.edu). I first tried using air temperature data from NOAA weather stations, but there were too many missing data. NOAA has minimum, mean, and maximum air tempearture data, whereas PRISM just has mean air temperature data.
