@@ -1,16 +1,25 @@
 # Hot air or warm water: fishkills in north temperate lakes
 
 ## Progress
-I have combined the Minnesota (Phelps et al. 2019) and Wisconsin (Till et al. 2019) fishkill datasets, and added concurrent (2003-2014) and future (2041-2059; 2081-2099) air and water temperature estimates.
+I have combined the Minnesota (Phelps et al. 2019) and Wisconsin (Till et al. 2019) fishkill datasets (2003-2014), and added concurrent and future (2041-2059; 2081-2099) air and water temperature estimates. All of these steps are performed in `01_combine_datasets.Rmd`. After running this code, the concurrent and future datasets are named `df_historical` and `df_future`, respectively. This code is based on the Till workflow, except it adds in the Phelps et al. (2019) and adds concurrent and future air temperature estimates. Next, I  need to 1) see if we can add in more events (see below), add cold-, cool-, and warm-water classification for the affected taxa (they're currentlly organized by family), and tidy the code.
 
+## Fishkillls
+The full dataset contains 915 fishkill events. There are 561 fishkill events that fit the criteria outlined below. I need to verify these steps and see if we can add any of these events via other methods:
+
+1. Events that occurred in waterways or did not have waterbody names and coordinates were removed. There were 44 events that were in waterways or did not have coordinates in the MN dataset (915 to 871).
+
+2. Events that occurred in the same waterbody during the same month were considered a single event. There were 235 events that were removed based on this simplication (871 to 636).
+
+3. Events whose identifiers did not match with full list of waterbodies for WI, MN, and MI (Site.ID). There were 75 events in which the WBIC from WI did not match with a WBIC and site_id from this list (636 to 561).
+
+## Concurrent temperature estimates
 Concurrent water temperature estimates (Winslow et al. 2017) include surface and benthic temperature estimates and are waterbody-specific throughout the study region. Concurrent air temperature estimates (~4 km resolution) were obtained from PRISM (http://prism.oregonstate.edu). I first tried using air temperature data from NOAA weather stations, but there were too many missing data. NOAA has minimum, mean, and maximum air tempearture data, whereas PRISM just has mean air temperature data.
 
-Future water temperature estimates are from Winslow et al. (2017), and based on several climate models under RCP 8.5 projections. I obtained future air temperature estimates (~8 km resolution) for the entire study region from the ACCESS 1.3 model, one of the models used in Winslow et al. (2017). After giving each waterbody a specific coordinate, I matched each waterbody with the nearest air tempearture estimate location. Lastly, I added snowfall data from PRISM and 2010 US census data for the area surrounding each waterbody.
-
-All of these steps are performed in `01_combine_datasets.Rmd`. After running this code, the concurrent and future datasets are named `df_historical` and `df_future`, respectively. I need to add cold-, cool-, and warm-water classification for the affected taxa and tidy this code, otherwise it should be ready for modelling.
+## Future temperature estimates
+Future water temperature estimates are from Winslow et al. (2017), and based on several climate models under RCP 8.5 projections. I obtained future air temperature estimates (~9 km resolution) for the entire study region from the ACCESS 1.3 model, one of the models used in Winslow et al. (2017). After giving each waterbody a specific coordinate, I matched each waterbody with the nearest air tempearture estimate location. Lastly, I added snowfall data from PRISM and 2010 US census data for the area surrounding each waterbody.
 
 ## Files
-1. `01_combine_datasets.Rmd`: Combines MN and WI fishkill datasets with air (~4 km resolution) and water (waterbody-specific) temperature estimates.
+1. `01_combine_datasets.Rmd`: Combines MN and WI fishkill datasets with air and water temperature estimates.
 2. `02_prepare_models.Rmd`: Partitions and scales the combined dataset.
 3. `03_fit_models.Rmd`: In progress
 
