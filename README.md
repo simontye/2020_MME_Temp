@@ -55,7 +55,7 @@ In progress
 
 ## Data
 All data files are categorized as either raw, processed, or model. These data are available for download via GitHub or R.
-For GitHub, click "Release" in the top menu and then download "data_1.0.zip".
+For GitHub, click "Release" in the top menu and then download "data_1.1.zip".
 For R, run the following chunk of code.
 
 ```{R: Download data files}
