@@ -9,11 +9,6 @@ Concurrent water temperature estimates (Winslow et al. 2017) include surface and
 ## Future temperature estimates (df_future)
 Future water temperature estimates (Winslow et al. 2017) are based on several climate models under RCP 8.5 projections. I obtained future air temperature estimates (~8 km resolution) for the entire study region (WI, MN, MI) from the NOAA GFGL CM3 model, one of the models used in Winslow et al. (2017). As above, I associated air temperature estimates with the nearest waterbody centroid. Lastly, I added 2010 census data for the area surrounding each waterbody.
 
-## Files
-1. `01_combine_datasets.Rmd`: Combines MN and WI fishkill datasets with thermal estimates.
-2. `02_prepare_models.Rmd`: Partitions and scales the combined dataset.
-3. `03_fit_models.Rmd`: In progress.
-
 ## 01_combine_datasets.Rmd
 This combines MN and WI fishkill datasets with thermal estimates. After running this script, the historical (2003-2014) and future (2041-2059; 2081-2099) dataframes are compiled as `df_historical.csv` and `df_future.csv`, respectively. The markdown file is organized into the following steps:
 
@@ -61,13 +56,18 @@ Contains statistical tests used in Till et al., (2019). I am holding off on this
 
 ## Data
 All data files are in the following folders:raw, processed, or models. These data are available for download via GitHub or R.
-For GitHub, click "Release" in the top menu and then download "data_1.2.zip".
+For GitHub, click "Release" in the top menu and then download the latest releases (1.2a and 1.2b).
+These are in separate files because there is a 2 GB limit for this method.
+It will likely have to be spread out into 3+ compressed files soon.
 For R, run the following chunk of code.
 
 ```{R: Download data files}
 # install.packages("piggyback")
 # require(piggyback)
 # pb_download(repo = "simontye/2020_MME_Temp",
-#             tag  = "1.2",
+#             tag  = "1.2a",
+#             dest = "data")
+# pb_download(repo = "simontye/2020_MME_Temp",
+#             tag  = "1.2b",
 #             dest = "data")
 ```
