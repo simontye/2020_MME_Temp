@@ -1,0 +1,219 @@
+---
+title: "06_statistics"
+author: "fishkill friends"
+date: "2020/11/10"
+output: github_document
+---
+
+### Background
+
+These are the same statistical tests that were ran in Till et al., (2019).
+
+### Step 1: Load packages and data
+
+```{r: Load packages and data}
+# Load packages
+library(ggplot2)
+library(ggthemes)
+library(ggmap)
+library(gridExtra)
+library(scales)
+library(car)
+library(DescTools)
+library(spdep)
+library(readr)
+library(dplyr)
+
+# Load data
+df.historical <- read_csv('data/processed/df_historical.csv')
+df.future     <- read_csv('data/processed/df_future.csv')
+df.snow       <- read_csv('data/processed/df_snow.csv') 
+
+#snow_data$month <- tolower(month.abb[as.numeric(snow_data$Month)])
+#snow_data$year  <- snow_data$Year
+```
+
+### Step 2:Summerkill statistics
+
+```{r: Summerkill statistics}
+# Black magic
+fig1ab.data <- df.historical %>% 
+  filter(month %in% c('6', '7', '8', '9')) %>%
+  mutate(cause.category.4 = replace(as.character(cause.category.4), which(is.na(cause.category.4)), 'Summer Non-event')) %>%
+  mutate(infectious = ifelse(cause.category.4 == 'infectious agent', 1, 0))%>% 
+  mutate(summerkill = ifelse(cause.category.4 == 'summerkill', 1, 0))
+
+# Dunnett's test to compare the means of various kill categories against the mean of non-kill lakes
+
+DunnettTest(mean_surf ~ factor(cause.category.4), data = fig1ab.data, control = 'Summer Non-event')
+
+# Normal distribution plot of mean surface temperature for non-kill events
+control.data <- fig1ab.data %>% 
+  filter(cause.category.4 == 'Summer Non-event')
+qqnorm(control.data$mean_surf)
+
+# Normal distribution plot of mean surface temperature for summerkill events
+summerkill.data = fig1ab_data %>% filter(cause.category.4 == 'summerkill')
+qqnorm(summerkill.data$mean_surf)
+
+# Normal distribution plot for mean surface temperature  for infectious events
+inf.data <- fig1ab.data %>%
+  filter(cause.category.4 == 'infectious agent')
+qqnorm(inf.data$mean_surf)
+
+# Welch's t-test as opposed to a student's t-test to control for the uneven variance between sample groups when comparing event to non-event lakes directly 
+ttest.1a  <- t.test(mean_surf_z ~ summerkill, data = fig1ab.data)
+ttest.1a
+
+# Normal distribution plot for z-score of mean surface temperature for summerkill events
+summerkill.data <- fig1ab.data %>% filter(cause.category.4 == 'summerkill')
+control.data    <- fig1ab.data %>% filter(cause.category.4 == 'Summer Non-event')
+qqplot(x = control.data$mean_surf_z, y = summerkill.data$mean_surf_z)
+rm(summerkill.data)
+
+# Welch's t-test for z-score of mean surface temperature for infectious events
+ttest_1b <- t.test(mean_surf_z ~ infectious, data = fig1ab_data)
+ttest_1b
+
+# Normal distribution plot of z-score of mean surface temperature for infectious and non-kill events
+inf_data     <- fig1ab.data %>% filter(cause.category.4 == 'infectious agent')
+control_data <- fig1ab.data %>% filter(cause.category.4 == 'Summer Non-event')
+qqplot(x = control.data$mean_surf_z, y = inf.data$mean_surf_z)
+rm(inf.data, control_data)
+```
+
+### Step 3: Winterkill statistics
+
+We run an ANOVA to compare the difference in mean temperature for winterkill vs non-event lakes
+
+```{r: Winterkill statistics}
+# Anova for differences in mean surface temperature and non-kill events
+fig1bd.data <- df.historical %>%
+  filter(month %in% c('12', '1', '2')) %>%
+  mutate(cause.category.4 = replace(as.character(cause.category.4), which(is.na(cause.category.4)), 'Winter Non-event')) %>% 
+  mutate(winterkill = ifelse(cause.category.4 == 'winterkill', 1, 0))
+
+# Anova
+anova.data <- fig1bd.data  %>% 
+  filter(cause.category.4 == 'Winter Non-event'| cause.category.4 == 'winterkill')
+anova <- aov(mean_surf ~ factor(cause.category.4), anova.data)
+summary(anova)
+#tuk <- TukeyHSD(anova)
+#tuk
+
+# Normal distribution plot of mean surface tempertaure for non-kill events
+control.data <- fig1bd_data %>%
+  filter(cause.category.4 == 'Winter Non-event')
+qqnorm(control.data$mean_surf)
+
+# Normal distribution plot of mean surface temperature for winterkill events
+winterkill.data <- fig1bd.data %>% 
+  filter(cause.category.4 == 'winterkill')
+qqnorm(winterkill.data$mean_surf)
+
+# Normal distribution plot of mean surface temperature for winterkill vs non-kill events
+qqplot(control.data$mean_surf, winterkill.data$mean_surf)
+
+# Welch's t-test rather an a student due to unequal sizes between the two populations
+ttest.1d <- t.test(mean_surf_z ~ winterkill, data = fig1bd.data)
+ttest.1d
+
+# Normal distribution plot of z-score for mean surface temperature for winterkill vs non-kill events
+qqplot(control.data$mean_surf_z, winterkill.data$mean_surf_z)
+rm(control.data, winterkill.data)
+
+# Anova for winterkill events and snow data
+fig.SI3.data <- df.historical %>%   
+  filter(month %in% c('12', '1', '2'))  %>%
+  mutate(lat_round = round(lat, 1), long_round = round(long, 1)) %>%
+  inner_join(df.snow, by = c('year', 'month', 'lat_round', 'long_round')) %>%
+  mutate(winterkill = ifelse(!is.na(cause.category.4) & cause.category.4 == 'winterkill', 1, 0))
+
+anova.snow <- aov(Snow ~ factor(winterkill), fig.SI3.data)
+summary(anova.snow)
+#tuk <- TukeyHSD(anova_snow)
+#tuk
+
+# Normal distribution plot for snow data and winterkill vs non-kill events
+control.data <- fig.SI3.data %>%
+  filter(winterkill == 0)
+winterkill.data <- fig.SI3.data %>% 
+  filter(winterkill == 1)
+
+qqplot(control.data$Snow, winterkill.data$Snow)
+rm(control.data, winterkill.data)
+
+# One sample t-test to see if the mean z-score of mean surface temperature is different from zero across seasons
+ttest.data.z <- filter(df.historical, cause.category.4 == 'winterkill')
+t.test(ttest.data.z$mean_surf_z, mu = 0)
+
+# Anova for winterkill events and ice duration
+fig.SI4.data <- df.historical  %>%
+  mutate(winterkill = ifelse(!is.na(cause.category.4) & 
+                               cause.category.4 == 'winterkill', 1, 0)) %>%
+  group_by(year, wbic) %>%
+  summarise(ice_duration = mean(ice_duration), winterkill = max(winterkill))
+
+anova <- aov(ice_duration ~ winterkill, fig_SI4_data)
+summary(anova)
+#tuk <- TukeyHSD(anova)
+#tuk
+
+# Normal distribution plot ice_duration for winterkill vs non event}
+control.data <- fig_SI4_data %>% filter(winterkill == 0)
+winterkill.data <- fig_SI4_data %>% filter(winterkill == 1)
+qqplot(control.data$ice_duration, winterkill.data$ice_duration)
+rm(control.data, winterkill.data)
+```
+
+
+### Step 4: Moran tests
+
+```{r}
+fig3a_data <-historical_data %>%
+  mutate(summerkill_binary = ifelse(is.na(summerkill) | summerkill == 'neg', 0 , 1)) %>%
+  group_by(wbic) %>%
+  summarise(MME = max(summerkill_binary), V1 = mean(lon), V2 = mean(lat))
+
+fig3b_data <- future_data %>%
+  dplyr::select(wbic, lat, lon, year) %>%
+  bind_cols(predictions_1) %>%
+  mutate(event = pos) %>%
+  mutate(no_event_prob = 1 - event) %>%
+  filter(year > 2030 & year < 2070) %>%
+  group_by(wbic) %>%
+  summarise(prob = (1 - prod(no_event_prob)), V1 = mean(lon), V2 = mean(lat)) 
+
+fig3c_data <- future_data %>%
+  dplyr::select(wbic, lat, lon, year) %>%
+  bind_cols(predictions_1)%>%
+  mutate(event = pos) %>%
+  mutate(no_event_prob = 1 - event) %>%
+  filter(year > 2070) %>%
+  group_by(wbic) %>%
+  summarise(prob = (1 - prod(no_event_prob)), V1 = mean(lon), V2 = mean(lat)) 
+
+coordinates(fig3a_data) <- c('V1', 'V2')
+coordinates(fig3b_data) <- c('V1', 'V2')
+coordinates(fig3c_data) <- c('V1', 'V2')
+
+nb_p1 <- knn2nb(knearneigh(coordinates(coordinates(fig3a_data)),longlat = TRUE, k = 2))
+nb_p2 <- knn2nb(knearneigh(coordinates(coordinates(fig3b_data)),longlat = TRUE, k = 2))
+nb_p3 <- knn2nb(knearneigh(coordinates(coordinates(fig3c_data)),longlat = TRUE, k = 2))
+
+weights_p1 <- nb2listw(nb_p1)
+weights_p2 <- nb2listw(nb_p2)
+weights_p3 <- nb2listw(nb_p3)
+
+moran_MME   <- moran.test(fig3a_data$MME, weights_p1)
+moran_Prob2 <- moran.test(fig3b_data$prob, weights_p2)
+moran_Prob3 <- moran.test(fig3c_data$prob, weights_p3)
+
+moran_MME
+moran_Prob2
+moran_Prob3
+```
+
+######################################
+The End
+######################################

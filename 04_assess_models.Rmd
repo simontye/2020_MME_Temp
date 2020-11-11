@@ -1,0 +1,163 @@
+---
+title: "assess models"
+author: "fishkill friends"
+date: "2020/11/10"
+output: github_document
+---
+
+### Background
+
+Candidate models are compared in terms of their coefficients to check for sensitivity of the coefficients to modeling choices, and their out-of-sample predictive performance, assessed using logloss and ROC-AUC. This is the same workflow as Till et al. (2019) except that I switched the file conversion from tibble to dataframe because of parsing errors.
+
+### Step 1: Load packages and data
+
+Description.
+
+```{r: Load packages and data}
+# Load packages
+library(tidyverse)
+library(caret)
+library(glmnet)
+library(Matrix)
+library(e1071)
+library(broom)
+library(yardstick)
+
+# Reset global environment
+rm(list = ls())
+
+# Set working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
+
+# Load data
+training <- read.csv(file = "training.csv", head = TRUE, sep = ",")
+testing  <- read.csv(file = "testing.csv", head = TRUE, sep = ",")
+
+# Reformat training data
+training <- training %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.factor(summerkill),
+         ice_duration = as.double(ice_duration))
+
+# Load testing data
+testing <- testing %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.factor(summerkill),
+         ice_duration = as.double(ice_duration))
+```
+
+### Step 2: Load models
+
+```{r: Load models}
+# Change working directory
+setwd("../models/assessment") 
+
+# Save file names
+model_names <- list.files()
+
+# Load models
+all_models <- model_names %>%
+  map(., ~read_rds(.x))
+
+# Black magic
+all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."), 
+                                     1, -2),
+                     model = all_models)
+```
+
+### Step 3: Extract fitted values
+
+Extract fitted values and append as new column.
+
+```{r: Extract fitted values}
+# Black magic
+predict_route <- function(model, newdata) {
+  if("train" %in% class(model)) {
+    predict(model, newdata, type = "prob")$pos
+  } else {predict(model, newdata, type = "response")}
+}
+
+# Black magic
+all_models <- all_models %>%
+  mutate(fit_test = map(model, predict_route, newdata = testing))
+
+# Calculate logloss and auc. This can be made more concise w/ map() (from Till)
+auc <- rep(NA, nrow(all_models))
+logloss <- auc
+for (i in 1:nrow(all_models)) {
+  a <- tibble(fit_test = all_models$fit_test[[i]],
+              truth    = testing$summerkill)
+  auc[i] <- roc_auc(a, truth, fit_test)$.estimate
+  logloss[i] <- mn_log_loss(a, truth, fit_test)$.estimate
+}
+
+# Black magic
+all_models %>%
+  add_column(auc, logloss) %>%
+  arrange(logloss, desc(auc))
+```
+
+### Step 4: Extract coefficients
+
+Extract coefficients from each model.
+
+```{r: Extract coefficients}
+# Black magic
+extract_coef <- function(model, name) {
+  if ("train" %in% class(model)) {
+    m <- model$finalModel %>%
+      coef(model$bestTune$lambda)
+    out <- tibble(term = row.names(m),
+                  estimate = m[, 1]) %>%
+      filter(term != "(Intercept)") %>%
+      select(term, estimate)
+  }
+  if ("glmerMod" %in% class(model)) {
+    out <- model %>%
+      tidy() %>%
+      filter(group == "fixed") %>%
+      filter(term != "(Intercept)") %>%
+      filter(p.value <= .3) %>%
+      select(term, estimate)
+  }
+  if ("glm" %in% class(model)) {
+    out <- model %>%
+      tidy() %>%
+      filter(term != "(Intercept)") %>%
+      select(term, estimate)
+  }
+  out
+}
+
+# Black magic
+all_models <- all_models %>%
+  mutate(coef = map2(model, name, extract_coef))
+```
+
+### Step 5: Plot coefficients
+
+Plot coefficients.
+
+```{r: Plot coefficients}
+# Black magic
+all_models %>%
+  unnest(coef) %>%
+  ggplot(aes(x = fct_reorder(term, estimate), 
+             y = estimate, 
+             fill = estimate > 0)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ name, ncol = 4) +
+  coord_flip() +
+  labs(x = NULL) +
+  theme_bw()
+```
+
+######################################
+Proceed to `05_fit_full_models.Rmd`
+######################################

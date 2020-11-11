@@ -1,0 +1,520 @@
+---
+title: "fit models"
+author: "fishkill friends"
+date: "2020/11/10"
+output: github_document
+---
+
+### Background
+
+Models are fit to the training data from `02_prepare_models` via four primary model families listed below. This is the same workflow as Till et al. (2019) except that I switched the file conversion from tibble to dataframe because of parsing errors.
+
+1. Logistic regression
+2. Ridge regression
+3. Lasso regression
+4. Logistic regression with random effects
+
+### Step 1: Load packages and data
+
+```{r: Load packages and data}
+# Load packages
+library(tidyverse)
+library(rsample)
+library(caret)
+library(glmnet)
+library(Matrix)
+library(e1071)
+library(pROC)
+library(PRROC) 
+library(glmnetUtils)
+library(doParallel)
+library(lme4)
+library(optimx)
+
+# Reset global environment
+rm(list = ls())
+
+# Set working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
+
+# Load data
+training <- read.csv(file = "training.csv", head = TRUE, sep = ",")
+testing  <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
+
+# Reformat training data
+training <- training %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.factor(summerkill),
+         ice_duration = as.double(ice_duration))
+
+# Reformat testing data
+testing <- testing %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.factor(summerkill),
+         ice_duration = as.double(ice_duration))
+```
+
+### Step 2: Specify variable sets
+
+The first generalized model uses a subset of variables selected based on their presumed effect and not being mutually non-correlated (at least strongly). Throughout the remaining code, models that are based on air or water temperature begin with "a" or "w", respectively.
+
+```{r: First generalized model}
+# First generalized model for water temperature (removed population for now because of NAs)
+w1 <- summerkill ~ long + lat + season + variance_after_ice_30 + variance_after_ice_60 +
+  log_schmidt + cumulative_above_10 + ice_duration + water_pca
+
+# First generalized model for air tempearture
+a1 <- summerkill ~ long + lat + season + air_pca + max_air
+```
+
+The second model involves all covariates except site_id, which we treat separately because of the number of levels.
+
+```{r: Second generalized model}
+# Second generalized model for water temperature (I removed population for now because of NAs)
+w2 <- summerkill ~ variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
+  cumulative_above_10 + ice_duration + long + lat + season + water_pca +
+  max_bot + max_surf + mean_bot + mean_surf + max_bot_z + max_surf_z + mean_bot_z +
+  mean_surf_z + layer_diff + water_quad_temp + peak_temp + cumulative_above_0 +
+  cumulative_above_5
+
+# Second generalized model for air temperature
+a2 <- summerkill ~ long + lat + season + air_pca + min_air + mean_air + max_air + air_quad_temp
+```
+
+### Step 3: Set up parameters for lambda selection for ridge and lasso regressions
+
+Black magic.
+
+```{r: Set up parameters for ridge and lasso models}
+# No down sampling
+control_logloss <- trainControl(method = "repeatedcv",
+                                number = 5,
+                                repeats = 5,
+                                summaryFunction = mnLogLoss,
+                                classProbs = TRUE)
+
+# Down sampling
+control_logloss_ds <- trainControl(method = "repeatedcv",
+                                   number = 5,
+                                   repeats = 5,
+                                   summaryFunction = mnLogLoss,
+                                   classProbs = TRUE,
+                                   sampling = "down")
+```
+
+### Step 4: Logistic regressions
+
+First set of generalized models from above (w1 and a1).
+
+```{r: First logistic regression}
+# Set seed
+set.seed(432)
+
+# First generalized model for water temperature
+logistic_w1 <- glm(w1, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_w1 <- step(logistic_w1)
+
+# First generalized model for air temperature
+logistic_a1 <- glm(a1, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a1 <- step(logistic_a1)
+
+# Save models
+write_rds(logistic_w1, "assessment/logistic_w1.rds")
+write_rds(logistic_a1, "assessment/logistic_a1.rds")
+```
+
+Second set of generalized model from above (w2 and a2).
+
+```{r: Second logistic regression}
+# Second generalized model for water temperature
+logistic_w2 <- glm(w2, training, family = "binomial") 
+
+# Stepwise model comparisons by AIC
+logistic_w2 <- step(logistic_w2)
+
+# Second generalized model for air temperature
+logistic_a2 <- glm(a2, training, family = "binomial") 
+
+# Stepwise model comparisons by AIC
+logistic_a2 <- step(logistic_a2)
+
+# Save models
+write_rds(logistic_w2, "../models/assessment/logistic_w2.rds")
+write_rds(logistic_a2, "../models/assessment/logistic_a2.rds")
+```
+
+### Step 5: Lasso regressions
+
+This fits LASSO models with many differenct lambdas, utilizing a 5-fold CV
+scheme, repeated five times, on the training data.
+
+First set of models with logloss and without downsampling (w1 and a1). Note that this suffers from unidentifiability in lambda (from Till).
+
+```{r: First lasso regression w/o downsampling}
+# Black magic
+cl <- makePSOCKcluster(6)
+registerDoParallel(cl)
+
+# Black magic
+par_grid <-  expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
+
+# Set seed
+set.seed(685)
+
+# First lasso model for water temperature
+lasso_w1_logloss <- train(w1,
+                     data = training, 
+                     method = "glmnet", 
+                     metric = "mnLogLoss",
+                     tuneGrid = par_grid,
+                     trControl = control_logloss)
+
+# First lasso model for air temperature
+lasso_a1_logloss <- train(a1,
+                     data = training, 
+                     method = "glmnet", 
+                     metric = "mnLogLoss",
+                     tuneGrid = par_grid,
+                     trControl = control_logloss)
+
+# Black magic
+stopCluster(cl)
+
+# Save models
+write_rds(lasso_w1_logloss, "../models/assessment/lasso_w1_logloss.rds")
+write_rds(lasso_a1_logloss, "../models/assessment/lasso_a1_logloss.rds")
+```
+
+First set of models with logloss and downsampling (w1 and a1).
+
+```{r: First lasso regression w/ downsampling}
+# Black magic
+cl <- makePSOCKcluster(4)
+
+# Black magic
+registerDoParallel(cl)
+
+# Black magic
+par_grid <-  expand.grid(alpha = 1, lambda = 10^seq(-3.5, -1.3, length = 8))
+
+# Set seed
+set.seed(336)
+
+# First lasso model for water temperature
+lasso_w1_logloss_downsampled <- train(w1, 
+                                      data = training, 
+                                      method = "glmnet", 
+                                      metric = "logLoss",
+                                      tuneGrid = par_grid,
+                                      trControl = control_logloss_ds)
+
+
+# First lasso model for air temperature
+lasso_a1_logloss_downsampled <- train(a1, 
+                                      data = training, 
+                                      method = "glmnet", 
+                                      metric = "logLoss",
+                                      tuneGrid = par_grid,
+                                      trControl = control_logloss_ds)
+# Black magic
+stopCluster(cl)
+
+# Save models
+write_rds(lasso_w1_logloss_downsampled, "../models/assessment/lasso_w1_logloss_downsampled.rds")
+write_rds(lasso_a1_logloss_downsampled, "../models/assessment/lasso_a1_logloss_downsampled.rds")
+```
+
+Second set of models with logloss and downsampling (w2 and a2). Note that this suffers from unidentifiability in lambda (from Till).
+
+```{r: Second lasso regression w/o downsampling}
+# Black magic
+cl <- makePSOCKcluster(6)
+
+# Black magic
+registerDoParallel(cl)
+
+# Black magic (was hashed out in Till)
+#par_grid <-  expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
+
+# Set seed
+set.seed(192)
+
+# Second lasso model for water temperature
+lasso_w2_logloss <- train(w2, 
+                     data = training, 
+                     method = "glmnet", 
+                     metric = "mnLogLoss",
+                     #tuneGrid = par_grid,
+                     trControl = control_logloss)
+
+# Second lasso model for air temperature
+lasso_a2_logloss <- train(a2, 
+                     data = training, 
+                     method = "glmnet", 
+                     metric = "mnLogLoss",
+                     #tuneGrid = par_grid,
+                     trControl = control_logloss)
+
+# Black magic
+stopCluster(cl)
+
+# Save models
+write_rds(lasso_w2_logloss, "../models/assessment/lasso_w2_logloss.rds")
+write_rds(lasso_a2_logloss, "../models/assessment/lasso_a2_logloss.rds")
+```
+
+Second set of models with logloss and downsampling (w2 and a2).
+
+```{r: Second lasso regression w/ downsampling}
+# Black magic
+cl <- makePSOCKcluster(6)
+registerDoParallel(cl)
+
+# Black magic (was hashed out in Till)
+#par_grid <-  expand.grid(alpha = 1,
+                        # lambda = seq(1.5e-6, 1e-5, 
+                        #              length.out = 6))
+
+# Set seed
+set.seed(699)
+
+# Second lasso model for water temperature
+lasso_w2_logloss_downsampled <- train(w2, 
+                                      data = training, 
+                                      method = "glmnet", 
+                                      metric = "mnLogLoss",
+                                      #tuneGrid = par_grid,
+                                      trControl = control_logloss_ds)
+
+# Second lasso model for water temperature
+lasso_a2_logloss_downsampled <- train(a2, 
+                                      data = training, 
+                                      method = "glmnet", 
+                                      metric = "mnLogLoss",
+                                      #tuneGrid = par_grid,
+                                      trControl = control_logloss_ds)
+
+# Black magic
+stopCluster(cl)
+
+# Save models
+write_rds(lasso_w2_logloss_downsampled, "../models/assessment/lasso_w2_logloss_downsampled.rds")
+write_rds(lasso_a2_logloss_downsampled, "../models/assessment/lasso_a2_logloss_downsampled.rds")
+```
+
+### Step 6: Ridge logistic regressions
+
+First set of models with logloss and without downsampling (w1 and a1). Note that this suffers from unidentifiability in lambda (from Till).
+
+```{r: First ridge regression w/o downsampling}
+# Black magic
+par_grid <-  expand.grid(alpha = 0,
+                        lambda = seq(3.5e-7, 1.5e-5,
+                                     length.out = 6))
+
+# Black magic
+cl <- makePSOCKcluster(6)
+registerDoParallel(cl)
+
+# Set seed
+set.seed(475)
+
+# First ridge model for water temperature
+ridge_w1_logloss <- train(w1, 
+                          data = training, 
+                          method = "glmnet",
+                          metric = "logLoss",
+                          tuneGrid = par_grid,
+                          trControl = control_logloss)
+
+# First ridge model for water temperature
+ridge_a1_logloss <- train(a1, 
+                          data = training, 
+                          method = "glmnet",
+                          metric = "logLoss",
+                          tuneGrid = par_grid,
+                          trControl = control_logloss)
+# Black magic
+stopCluster(cl)
+
+# Save models
+write_rds(ridge_w1_logloss, "../models/assessment/ridge_w1_logloss.rds")
+write_rds(ridge_a1_logloss, "../models/assessment/ridge_a1_logloss.rds")
+
+```
+
+First set of models with logloss and downsampling (w1 and a1).
+
+```{r: First ridge regression w/ downsampling}
+# Black magic
+par_grid <-  expand.grid(alpha = 0,
+                        lambda = seq(3.5e-8, 3.5e7,
+                                     length.out = 8))
+# Black magic
+cl <- makePSOCKcluster(6)
+registerDoParallel(cl)
+
+# Sed seed
+set.seed(284)
+
+# First ridge model for water temperature
+ridge_w1_logloss_downsampled <- train(w1, 
+                                      data = training, 
+                                      method = "glmnet",
+                                      metric = "logLoss",
+                                      tuneGrid = par_grid,
+                                      trControl = control_logloss_ds)
+
+
+# First ridge model for air temperature
+ridge_a1_logloss_downsampled <- train(a1, 
+                                      data = training, 
+                                      method = "glmnet",
+                                      metric = "logLoss",
+                                      tuneGrid = par_grid,
+                                      trControl = control_logloss_ds)
+
+# Black magic
+stopCluster(cl)
+
+# Save models
+write_rds(ridge_w1_logloss_downsampled, "../models/assessment/ridge_w1_logloss_downsampled.rds")
+write_rds(ridge_a1_logloss_downsampled, "../models/assessment/ridge_a1_logloss_downsampled.rds")
+```
+
+Second set of models with logloss and downsampling (w2 and a2).
+
+```{r: Second ridge regression w/o downsampling}
+
+# Black magic
+par_grid <-  expand.grid(alpha = 0,
+                        lambda = seq(.01, .25, 
+                                     length.out = 8))
+# Black magic
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+
+# Set seed
+set.seed(952)
+
+# Second ridge model for water temperature
+ridge_w2_logloss_downsampled <- train(w2, 
+                                      data = training, 
+                                      method = "glmnet", 
+                                      metric = "logLoss",
+                                      tuneGrid = par_grid,
+                                      trControl = control_logloss_ds)
+
+# Second ridge model for air temperature
+ridge_a2_logloss_downsampled <- train(a2, 
+                                      data = training, 
+                                      method = "glmnet", 
+                                      metric = "logLoss",
+                                      tuneGrid = par_grid,
+                                      trControl = control_logloss_ds)
+# Black magic
+stopCluster(cl)
+
+# Save models
+write_rds(ridge_w2_logloss_downsampled, "../models/assessment/ridge_w2_logloss_downsampled.rds")
+write_rds(ridge_a2_logloss_downsampled, "../models/assessment/ridge_a2_logloss_downsampled.rds")
+```
+
+Second set of models with logloss and downsampling (w2 and a2). Note that this suffers from unidentifiability in lambda (from Till).
+
+```{r: Second ridge regression w/o downsampling}
+# Black magic
+par_grid <-  expand.grid(alpha = 0,
+                        lambda = 10^seq(-6, -8,
+                                     length.out = 8))
+# Black magic
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+
+# Set seed
+set.seed(152)
+
+# Second ridge model for water temperature
+ridge_w2_logloss <- train(w2, 
+                          data = training, 
+                          method = "glmnet", 
+                          metric = "logLoss",
+                          tuneGrid = par_grid,
+                          trControl = control_logloss)
+
+# Second ridge model for water temperature
+ridge_a2_logloss <- train(a2, 
+                          data = training, 
+                          method = "glmnet", 
+                          metric = "logLoss",
+                          tuneGrid = par_grid,
+                          trControl = control_logloss)
+# Black magic
+stopCluster(cl)
+
+# Save models
+write_rds(ridge_w2_logloss, "../models/assessment/ridge_w2_logloss.rds")
+write_rds(ridge_a2_logloss, "../models/assessment/ridge_a2_logloss.rds")
+```
+
+### Step 7: Logistic regressions with random effecs
+
+```{r: First random effects logistic}
+
+# Random effects model for water temperature
+w1_re <- summerkill ~ long + lat + season + variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
+  cumulative_above_10 + ice_duration + water_pca + (1 | site_id)
+
+# Black magic
+re_w1 <- glmer(w1_re,
+               data = training, 
+               family = binomial, 
+               control = glmerControl(optimizer = "bobyqa"),
+               nAGQ = 10)
+
+# Black magic
+rf_w1 <- lmer(w1_re, 
+          data = training,
+          family = binomial,
+          REML = FALSE, 
+          control = glmerControl(optimizer = 'optimx',
+                           optCtrl = list(method = 'L-BFGS-B')))
+
+# Random effects model for air temperature
+a1_re <- summerkill ~ long + lat + season + air_pca + (1 | site_id)
+
+# Black magic
+re_a1 <- glmer(a1_re,
+               data = training, 
+               family = binomial, 
+               control = glmerControl(optimizer = "bobyqa"),
+               nAGQ = 10)
+
+# Black magic
+rf_a1 <- lmer(a1_re, 
+          data = training,
+          family = binomial,
+          REML = FALSE, 
+          control = glmerControl(optimizer = 'optimx',
+                           optCtrl = list(method = 'L-BFGS-B')))
+
+# Save models
+write_rds(re_w1, "../models/assessment/re_w1.rds")
+write_rds(rf_w1, "../models/assessment/rf_w1.rds")
+write_rds(re_a1, "../models/assessment/re_a1.rds")
+write_rds(rf_a1, "../models/assessment/rf_a1.rds")
+```
+
+######################################
+Proceed to `04_assess_models.Rmd`
+######################################

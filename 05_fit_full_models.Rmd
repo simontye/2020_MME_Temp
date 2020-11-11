@@ -1,0 +1,144 @@
+---
+title: "fit_full_models"
+author: "fishkill friends"
+date: "2020/11/10"
+output: github_document
+---
+
+### Background
+
+A subset of the models are refit using the full historical data set.
+
+### Step 1: Load packages and daat
+
+```{r: Load packages and data}
+# Load packages
+library(tidyverse)
+library(rsample)
+library(caret)
+library(glmnet)
+library(Matrix)
+library(e1071)
+library(pROC)
+library(PRROC) 
+library(glmnetUtils)
+library(doParallel)
+library(lme4)
+
+# Reset global environment
+rm(list = ls())
+
+# Set working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/processed")
+
+# Load historical data
+df_historical <- df_historical %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.character(summerkill),
+         ice_duration = as.double(ice_duration)) %>%
+  dplyr::select(., -c("anthropogenic", "infectious", "unknown", "winterkill",
+                      "event", "gnis_nm")) %>%
+  mutate(summerkill = fct_recode(summerkill,
+                                 "neg" = "0",
+                                 "pos" = "1"))
+
+# Scale data
+pre_proc_values <- preProcess(df_historical, method = c("center", "scale"))
+df_historical   <- predict(pre_proc_values, df_historical)
+```
+
+### Step 2: Fit full models
+
+Specify predictor set and control parameters.
+
+```{r: Fit full models}
+# Black magic
+f1 <- summerkill ~ variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
+  cumulative_above_10 + ice_duration + population + lon + lat + season + temp
+
+# Black magic
+control_logloss_ds <- trainControl(method = "repeatedcv",
+                                   number = 5,
+                                   repeats = 5,
+                                   summaryFunction = mnLogLoss,
+                                   classProbs = TRUE,
+                                   sampling = "down")
+```
+
+### Step 3: Logistic model
+
+```{r: Logistic model}
+# Black magic
+full_logistic_f1_backwards <- glm(f1,
+                         historical_data,
+                         family = "binomial") 
+# Black magic
+full_logistic_f1_backwards <- step(full_logistic_f1_backwards)
+
+# Save model
+write_rds(full_logistic_f1_backwards, "../models/full_logistic_f1.rds")
+```
+
+### Step 4: Lasso model
+
+```{r: Lasso model}
+# Black magic
+cl <- makePSOCKcluster(4)
+registerDoParallel(cl)
+
+# Black magic
+par_grid <-  expand.grid(alpha = 1,
+                         lambda = 10^seq(-3, -1, length = 10))
+
+# Set seed
+set.seed(825)
+
+# Black magic
+full_lasso_f1_logloss_downsampled <- train(f1, 
+                                            data = historical_data, 
+                                            method = "glmnet", 
+                                            metric = "logLoss",
+                                            tuneGrid = par_grid,
+                                            trControl = control_logloss_ds)
+
+# Black magic
+stopCluster(cl)
+
+# Save model
+write_rds(full_lasso_f1_logloss_downsampled, "../models/full_lasso_f1_logloss_downsampled.rds")
+```
+
+### Step 5: Ridge model
+
+```{r: Ridge model}
+# Black magic
+par_grid <-  expand.grid(alpha = 0,
+                         lambda = 10^seq(-1.7, -1.3, length = 10))
+# Black magic
+cl <- makePSOCKcluster(4)
+registerDoParallel(cl)
+
+# Set seed
+set.seed(825)
+
+# Black magic
+full_ridge_f1_logloss_downsampled <- train(f1, 
+                                            data = historical_data, 
+                                            method = "glmnet",
+                                            metric = "logLoss",
+                                            tuneGrid = par_grid,
+                                            trControl = control_logloss_ds)
+
+# Black magic
+stopCluster(cl)
+
+# Save model
+write_rds(full_ridge_f1_logloss_downsampled, "../models/full_ridge_f1_logloss_downsampled.rds")
+```
+
+######################################
+Proceed to `06_statistics.Rmd`
+######################################

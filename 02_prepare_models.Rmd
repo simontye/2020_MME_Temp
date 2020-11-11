@@ -1,7 +1,7 @@
 ---
-title: "Prepare models"
-author: "Mass mortality crew"
-date: "2020/05/20"
+title: "prepare models"
+author: "fishkill friends"
+date: "2020/11/10"
 output: github_document
 ---
 
@@ -10,44 +10,50 @@ output: github_document
 This is a second pass at data processing to prepare data for model fitting.
 
 ```{r: Load packages and data}
-# Install packages
-#install.packages(c("caret"))
-
 # Load packages
 library(tidyverse)
 library(caret)
 
+# Reset global environment
+rm(list = ls())
+
 # Change working directory
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/processed")
 
-# Re-process data. Need to add in air temperature data
-model_historical <- read_csv("model_historical.csv",
-                             col_types = list(site_id = col_character(),
-                                              state = col_character(), # Added for comparison
-                                              year = col_character(),
-                                              month  = col_character(),
-                                              season = col_character(),
-                                              summerkill = col_character(),
-                                              ice_duration = col_double())) %>%
-  select(-cause.category.4, -anthropogenic, -infectious, -unknown, -winterkill) %>%
-  mutate(summerkill = fct_recode(summerkill,
-                                 "neg" = "0",
-                                 "pos" = "1"))
+# Load historical data
+df_historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
 ```
 
 ### Step 2: Partition and scale data
 
-This partitions the data into training and testing sets, then scale thems to allow for coefficient comparison.
+This verifies formatting and partitions the data into training and testing sets, which are scaled to allow for coefficient comparison. This is the same workflow as Till et al. (2019) except that I switched the file conversion from tibble to dataframe because of parsing errors.
 
 ```{r: Partition and scale data}
+# Verify formatting and recode summerkill
+df_historical <- df_historical %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.character(summerkill),
+         ice_duration = as.double(ice_duration)) %>%
+  dplyr::select(., -c("anthropogenic", "infectious", "unknown", "winterkill",
+                      "event", "gnis_nm", "population")) %>%
+  mutate(summerkill = fct_recode(summerkill,
+                                 "neg" = "0",
+                                 "pos" = "1"))
 # Set seed
 set.seed(666)
-in_training <- createDataPartition(model_historical$summerkill, p = .75, list = FALSE)
 
-# Partition data
-training <- model_historical  %>%
+# Creates series of training partitions
+in_training <- createDataPartition(df_historical$summerkill, p = .75, list = FALSE)
+
+# Partition training data
+training <- df_historical  %>%
   slice(in_training)
-testing  <- model_historical %>%
+
+# Partition testing data
+testing  <- df_historical %>%
   slice(-in_training)
 
 # Scale data
@@ -61,13 +67,17 @@ testing  <- predict(pre_proc_values, testing) %>%
          year = as.integer(year))
 
 # Change working directory
-setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data")
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
 
 # Export data
-write_csv(training, "models/training.csv")
-write_csv(testing,  "models/testing.csv")
+write_csv(training, "training.csv")
+write_csv(testing,  "testing.csv")
+
+# Remove dataframes
+rm(df_historical, in_training, pre_proc_values,
+   testing, training)
 ```
 
-### Step 3: In progress
-
-
+######################################
+Proceed to `03_fit_models.Rmd`
+######################################
