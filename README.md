@@ -40,7 +40,24 @@ This code is from the Till et al. (2019) workflow, and creates training and test
 	a. `models/testing.csv`: Testing set
 	
 ## 03_fit_models.Rmd
-In progress
+Compares preliminary models from four model families:
+
+1. Logistic regression
+2. Ridge regression
+3. Lasso regression
+4. Logistic regression with random effects
+
+## 04_assess_models.Rmd
+
+Compares preliminary models.
+
+## 05_fit_full_models.Rmd
+
+Runs the best fit models based on assessments.
+
+## 06_statistics.Rmd
+
+Contains statistical tests used in Till et al., (2019). I am holding off on this until we agree on the models used in the above steps.
 
 ## Data
 All data files are in the following folders:raw, processed, or models. These data are available for download via GitHub or R.
