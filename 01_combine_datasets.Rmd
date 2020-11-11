@@ -30,14 +30,6 @@ This file combines fishkill data from Minnesota (Phelps et al. 2019) and Wiscons
 - `localities.csv`:                Coordinates for waterbodies in the upper midwest
 - `mme_temp_missing.kml`:          Locations of waterbodies that had missing coordinates
 
-### Folders in data/raw:
-
-- `census_data`:       2010 US census data
-- `lake_shapes`:       GIS polygons of waterbodies in the upper midwest
-- `localities`:        List of csv files used to obtain historical air temperature estimates
-- `temp_air`:          Historical and future water temperature estimates 
-- `wisconsin_outline`: GIS polygons of Wisconsin
-
 ### Step 1: Load packages and data
 
 Note that the `lakeattribute` package requires a remote install.
