@@ -66,25 +66,30 @@ The first generalized model uses a subset of variables selected based on their p
 
 ```{r: First generalized model}
 # First generalized model for water temperature (removed population for now because of NAs)
-w1 <- summerkill ~ long + lat + season + variance_after_ice_30 + variance_after_ice_60 +
+w1 <- summerkill ~ long + lat + season +
+  variance_after_ice_30 + variance_after_ice_60 +
   log_schmidt + cumulative_above_10 + ice_duration + water_pca
 
-# First generalized model for air tempearture
+# First generalized model for air temperature
 a1 <- summerkill ~ long + lat + season + air_pca + max_air
 ```
 
 The second model involves all covariates except site_id, which we treat separately because of the number of levels.
 
 ```{r: Second generalized model}
-# Second generalized model for water temperature (I removed population for now because of NAs)
-w2 <- summerkill ~ variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-  cumulative_above_10 + ice_duration + long + lat + season + water_pca +
-  max_bot + max_surf + mean_bot + mean_surf + max_bot_z + max_surf_z + mean_bot_z +
-  mean_surf_z + layer_diff + water_quad_temp + peak_temp + cumulative_above_0 +
-  cumulative_above_5
+# Second generalized model for water temperature (removed population for now because of NAs)
+w2 <- summerkill ~ long + lat + season + ice_duration +
+  variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
+    cumulative_above_10 + cumulative_above_5 + cumulative_above_0 + water_pca +
+    max_bot + max_surf + mean_bot + mean_surf +
+    max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
+    layer_diff + water_quad_temp + peak_temp 
 
 # Second generalized model for air temperature
-a2 <- summerkill ~ long + lat + season + air_pca + min_air + mean_air + max_air + air_quad_temp
+a2 <- summerkill ~ long + lat + season +
+  min_air + mean_air + max_air + 
+  min_air_z + mean_air_z + max_air_z +
+  air_quad_temp + air_pca
 ```
 
 ### Step 3: Set up parameters for lambda selection for ridge and lasso regressions
@@ -139,6 +144,9 @@ Second set of generalized model from above (w2 and a2).
 # Second generalized model for water temperature
 logistic_w2 <- glm(w2, training, family = "binomial") 
 
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
 # Stepwise model comparisons by AIC
 logistic_w2 <- step(logistic_w2)
 
@@ -149,14 +157,13 @@ logistic_a2 <- glm(a2, training, family = "binomial")
 logistic_a2 <- step(logistic_a2)
 
 # Save models
-write_rds(logistic_w2, "../models/assessment/logistic_w2.rds")
-write_rds(logistic_a2, "../models/assessment/logistic_a2.rds")
+write_rds(logistic_w2, "assessment/logistic_w2.rds")
+write_rds(logistic_a2, "assessment/logistic_a2.rds")
 ```
 
 ### Step 5: Lasso regressions
 
-This fits LASSO models with many differenct lambdas, utilizing a 5-fold CV
-scheme, repeated five times, on the training data.
+This fits LASSO models with many differenct lambdas, utilizing a 5-fold CV scheme, repeated five times, on the training data.
 
 First set of models with logloss and without downsampling (w1 and a1). Note that this suffers from unidentifiability in lambda (from Till).
 
@@ -191,8 +198,8 @@ lasso_a1_logloss <- train(a1,
 stopCluster(cl)
 
 # Save models
-write_rds(lasso_w1_logloss, "../models/assessment/lasso_w1_logloss.rds")
-write_rds(lasso_a1_logloss, "../models/assessment/lasso_a1_logloss.rds")
+write_rds(lasso_w1_logloss, "assessment/lasso_w1_logloss.rds")
+write_rds(lasso_a1_logloss, "assessment/lasso_a1_logloss.rds")
 ```
 
 First set of models with logloss and downsampling (w1 and a1).
@@ -230,8 +237,8 @@ lasso_a1_logloss_downsampled <- train(a1,
 stopCluster(cl)
 
 # Save models
-write_rds(lasso_w1_logloss_downsampled, "../models/assessment/lasso_w1_logloss_downsampled.rds")
-write_rds(lasso_a1_logloss_downsampled, "../models/assessment/lasso_a1_logloss_downsampled.rds")
+write_rds(lasso_w1_logloss_downsampled, "assessment/lasso_w1_logloss_downsampled.rds")
+write_rds(lasso_a1_logloss_downsampled, "assessment/lasso_a1_logloss_downsampled.rds")
 ```
 
 Second set of models with logloss and downsampling (w2 and a2). Note that this suffers from unidentifiability in lambda (from Till).
@@ -269,8 +276,8 @@ lasso_a2_logloss <- train(a2,
 stopCluster(cl)
 
 # Save models
-write_rds(lasso_w2_logloss, "../models/assessment/lasso_w2_logloss.rds")
-write_rds(lasso_a2_logloss, "../models/assessment/lasso_a2_logloss.rds")
+write_rds(lasso_w2_logloss, "assessment/lasso_w2_logloss.rds")
+write_rds(lasso_a2_logloss, "assessment/lasso_a2_logloss.rds")
 ```
 
 Second set of models with logloss and downsampling (w2 and a2).
@@ -308,8 +315,8 @@ lasso_a2_logloss_downsampled <- train(a2,
 stopCluster(cl)
 
 # Save models
-write_rds(lasso_w2_logloss_downsampled, "../models/assessment/lasso_w2_logloss_downsampled.rds")
-write_rds(lasso_a2_logloss_downsampled, "../models/assessment/lasso_a2_logloss_downsampled.rds")
+write_rds(lasso_w2_logloss_downsampled, "assessment/lasso_w2_logloss_downsampled.rds")
+write_rds(lasso_a2_logloss_downsampled, "assessment/lasso_a2_logloss_downsampled.rds")
 ```
 
 ### Step 6: Ridge logistic regressions
@@ -348,8 +355,8 @@ ridge_a1_logloss <- train(a1,
 stopCluster(cl)
 
 # Save models
-write_rds(ridge_w1_logloss, "../models/assessment/ridge_w1_logloss.rds")
-write_rds(ridge_a1_logloss, "../models/assessment/ridge_a1_logloss.rds")
+write_rds(ridge_w1_logloss, "assessment/ridge_w1_logloss.rds")
+write_rds(ridge_a1_logloss, "assessment/ridge_a1_logloss.rds")
 
 ```
 
@@ -388,8 +395,8 @@ ridge_a1_logloss_downsampled <- train(a1,
 stopCluster(cl)
 
 # Save models
-write_rds(ridge_w1_logloss_downsampled, "../models/assessment/ridge_w1_logloss_downsampled.rds")
-write_rds(ridge_a1_logloss_downsampled, "../models/assessment/ridge_a1_logloss_downsampled.rds")
+write_rds(ridge_w1_logloss_downsampled, "assessment/ridge_w1_logloss_downsampled.rds")
+write_rds(ridge_a1_logloss_downsampled, "assessment/ridge_a1_logloss_downsampled.rds")
 ```
 
 Second set of models with logloss and downsampling (w2 and a2).
@@ -426,8 +433,8 @@ ridge_a2_logloss_downsampled <- train(a2,
 stopCluster(cl)
 
 # Save models
-write_rds(ridge_w2_logloss_downsampled, "../models/assessment/ridge_w2_logloss_downsampled.rds")
-write_rds(ridge_a2_logloss_downsampled, "../models/assessment/ridge_a2_logloss_downsampled.rds")
+write_rds(ridge_w2_logloss_downsampled, "assessment/ridge_w2_logloss_downsampled.rds")
+write_rds(ridge_a2_logloss_downsampled, "assessment/ridge_a2_logloss_downsampled.rds")
 ```
 
 Second set of models with logloss and downsampling (w2 and a2). Note that this suffers from unidentifiability in lambda (from Till).
@@ -463,8 +470,8 @@ ridge_a2_logloss <- train(a2,
 stopCluster(cl)
 
 # Save models
-write_rds(ridge_w2_logloss, "../models/assessment/ridge_w2_logloss.rds")
-write_rds(ridge_a2_logloss, "../models/assessment/ridge_a2_logloss.rds")
+write_rds(ridge_w2_logloss, "assessment/ridge_w2_logloss.rds")
+write_rds(ridge_a2_logloss, "assessment/ridge_a2_logloss.rds")
 ```
 
 ### Step 7: Logistic regressions with random effecs
@@ -509,10 +516,10 @@ rf_a1 <- lmer(a1_re,
                            optCtrl = list(method = 'L-BFGS-B')))
 
 # Save models
-write_rds(re_w1, "../models/assessment/re_w1.rds")
-write_rds(rf_w1, "../models/assessment/rf_w1.rds")
-write_rds(re_a1, "../models/assessment/re_a1.rds")
-write_rds(rf_a1, "../models/assessment/rf_a1.rds")
+write_rds(re_w1, "assessment/re_w1.rds")
+write_rds(rf_w1, "assessment/rf_w1.rds")
+write_rds(re_a1, "assessment/re_a1.rds")
+write_rds(rf_a1, "assessment/rf_a1.rds")
 ```
 
 ######################################

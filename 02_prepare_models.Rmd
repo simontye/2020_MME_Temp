@@ -38,7 +38,7 @@ df_historical <- df_historical %>%
          summerkill   = as.character(summerkill),
          ice_duration = as.double(ice_duration)) %>%
   dplyr::select(., -c("anthropogenic", "infectious", "unknown", "winterkill",
-                      "event", "gnis_nm", "population")) %>%
+                      "event", "gnis_nm", "population")) %>% # removed population for now because there are NAs, messes with the models, need to fix
   mutate(summerkill = fct_recode(summerkill,
                                  "neg" = "0",
                                  "pos" = "1"))
