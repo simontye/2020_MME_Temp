@@ -136,6 +136,9 @@ logistic_a1 <- step(logistic_a1)
 # Save models
 write_rds(logistic_w1, "assessment/logistic_w1.rds")
 write_rds(logistic_a1, "assessment/logistic_a1.rds")
+
+# Remove models
+rm(logistic_w1, logistic_a1)
 ```
 
 Second set of generalized model from above (w2 and a2).
@@ -150,6 +153,9 @@ logistic_w2 <- glm(w2, training, family = "binomial")
 # Stepwise model comparisons by AIC
 logistic_w2 <- step(logistic_w2)
 
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
 # Second generalized model for air temperature
 logistic_a2 <- glm(a2, training, family = "binomial") 
 
@@ -159,9 +165,15 @@ logistic_a2 <- glm(a2, training, family = "binomial")
 # Stepwise model comparisons by AIC
 logistic_a2 <- step(logistic_a2)
 
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
 # Save models
 write_rds(logistic_w2, "assessment/logistic_w2.rds")
 write_rds(logistic_a2, "assessment/logistic_a2.rds")
+
+# Remove models
+rm(logistic_w2, logistic_a2)
 ```
 
 ### Step 5: Lasso regressions
@@ -189,9 +201,21 @@ lasso_w1_logloss <- train(w1,
                      tuneGrid = par_grid,
                      trControl = control_logloss)
 
-### Warning message:
-### In train.default(x, y, weights = w, ...) :
+### Warning messages:
+### 1: In train.default(x, y, weights = w, ...) :
 ###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
+### 2: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 8 (<-localhost:11642)
+### 3: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 7 (<-localhost:11642)
+### 4: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 6 (<-localhost:11642)
+### 5: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 5 (<-localhost:11642)
+### 6: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 4 (<-localhost:11642)
+### 7: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 3 (<-localhost:11642)
 
 # First lasso model for air temperature
 lasso_a1_logloss <- train(a1,
@@ -201,12 +225,19 @@ lasso_a1_logloss <- train(a1,
                      tuneGrid = par_grid,
                      trControl = control_logloss)
 
+### Warning message:
+### In train.default(x, y, weights = w, ...) :
+###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
+
 # Black magic
 stopCluster(cl)
 
 # Save models
 write_rds(lasso_w1_logloss, "assessment/lasso_w1_logloss.rds")
 write_rds(lasso_a1_logloss, "assessment/lasso_a1_logloss.rds")
+
+# Remove models
+rm(lasso_w1_logloss, lasso_a1_logloss)
 ```
 
 First set of models with logloss and downsampling (w1 and a1).
@@ -246,6 +277,9 @@ stopCluster(cl)
 # Save models
 write_rds(lasso_w1_logloss_downsampled, "assessment/lasso_w1_logloss_downsampled.rds")
 write_rds(lasso_a1_logloss_downsampled, "assessment/lasso_a1_logloss_downsampled.rds")
+
+# Remove models
+rm(lasso_w1_logloss_downsampled, lasso_a1_logloss_downsampled)
 ```
 
 Second set of models with logloss and downsampling (w2 and a2). Note that this suffers from unidentifiability in lambda (from Till).
@@ -271,6 +305,10 @@ lasso_w2_logloss <- train(w2,
                      #tuneGrid = par_grid,
                      trControl = control_logloss)
 
+### Warning message:
+### In train.default(x, y, weights = w, ...) :
+###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
+
 # Second lasso model for air temperature
 lasso_a2_logloss <- train(a2, 
                      data = training, 
@@ -279,12 +317,19 @@ lasso_a2_logloss <- train(a2,
                      #tuneGrid = par_grid,
                      trControl = control_logloss)
 
+### Warning message:
+### In train.default(x, y, weights = w, ...) :
+###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
+
 # Black magic
 stopCluster(cl)
 
 # Save models
 write_rds(lasso_w2_logloss, "assessment/lasso_w2_logloss.rds")
 write_rds(lasso_a2_logloss, "assessment/lasso_a2_logloss.rds")
+
+# Remove models
+rm(lasso_w2_logloss, lasso_a2_logloss)
 ```
 
 Second set of models with logloss and downsampling (w2 and a2).
@@ -310,6 +355,10 @@ lasso_w2_logloss_downsampled <- train(w2,
                                       #tuneGrid = par_grid,
                                       trControl = control_logloss_ds)
 
+### Warning message:
+### In train.default(x, y, weights = w, ...) :
+###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
+
 # Second lasso model for water temperature
 lasso_a2_logloss_downsampled <- train(a2, 
                                       data = training, 
@@ -318,12 +367,19 @@ lasso_a2_logloss_downsampled <- train(a2,
                                       #tuneGrid = par_grid,
                                       trControl = control_logloss_ds)
 
+### Warning message:
+### In train.default(x, y, weights = w, ...) :
+###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
+
 # Black magic
 stopCluster(cl)
 
 # Save models
 write_rds(lasso_w2_logloss_downsampled, "assessment/lasso_w2_logloss_downsampled.rds")
 write_rds(lasso_a2_logloss_downsampled, "assessment/lasso_a2_logloss_downsampled.rds")
+
+# Remove models
+rm(lasso_w2_logloss_downsampled, lasso_a2_logloss_downsampled)
 ```
 
 ### Step 6: Ridge logistic regressions
@@ -365,6 +421,8 @@ stopCluster(cl)
 write_rds(ridge_w1_logloss, "assessment/ridge_w1_logloss.rds")
 write_rds(ridge_a1_logloss, "assessment/ridge_a1_logloss.rds")
 
+# Remove models
+rm(ridge_w1_logloss, ridge_a1_logloss)
 ```
 
 First set of models with logloss and downsampling (w1 and a1).
@@ -374,6 +432,7 @@ First set of models with logloss and downsampling (w1 and a1).
 par_grid <-  expand.grid(alpha = 0,
                         lambda = seq(3.5e-8, 3.5e7,
                                      length.out = 8))
+
 # Black magic
 cl <- makePSOCKcluster(6)
 registerDoParallel(cl)
@@ -404,16 +463,19 @@ stopCluster(cl)
 # Save models
 write_rds(ridge_w1_logloss_downsampled, "assessment/ridge_w1_logloss_downsampled.rds")
 write_rds(ridge_a1_logloss_downsampled, "assessment/ridge_a1_logloss_downsampled.rds")
+
+# Remove models
+rm(ridge_w1_logloss_downsampled, ridge_a1_logloss_downsampled)
 ```
 
 Second set of models with logloss and downsampling (w2 and a2).
 
 ```{r: Second ridge regression w/o downsampling}
-
 # Black magic
 par_grid <-  expand.grid(alpha = 0,
                         lambda = seq(.01, .25, 
                                      length.out = 8))
+
 # Black magic
 cl <- makePSOCKcluster(5)
 registerDoParallel(cl)
@@ -442,6 +504,9 @@ stopCluster(cl)
 # Save models
 write_rds(ridge_w2_logloss_downsampled, "assessment/ridge_w2_logloss_downsampled.rds")
 write_rds(ridge_a2_logloss_downsampled, "assessment/ridge_a2_logloss_downsampled.rds")
+
+# Remove models
+rm(ridge_w2_logloss_downsampled, ridge_a2_logloss_downsampled)
 ```
 
 Second set of models with logloss and downsampling (w2 and a2). Note that this suffers from unidentifiability in lambda (from Till).
@@ -479,12 +544,14 @@ stopCluster(cl)
 # Save models
 write_rds(ridge_w2_logloss, "assessment/ridge_w2_logloss.rds")
 write_rds(ridge_a2_logloss, "assessment/ridge_a2_logloss.rds")
+
+# Remove models
+rm(ridge_w2_logloss, ridge_a2_logloss)
 ```
 
 ### Step 7: Logistic regressions with random effecs
 
 ```{r: First random effects logistic}
-
 # Random effects model for water temperature
 w1_re <- summerkill ~ long + lat + season + variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
   cumulative_above_10 + ice_duration + water_pca + (1 | site_id)
@@ -496,6 +563,12 @@ re_w1 <- glmer(w1_re,
                control = glmerControl(optimizer = "bobyqa"),
                nAGQ = 10)
 
+### Warning messages:
+### 1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+###   unable to evaluate scaled gradient
+### 2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+###    Hessian is numerically singular: parameters are not uniquely determined
+   
 # Black magic
 rf_w1 <- lmer(w1_re, 
           data = training,
@@ -504,15 +577,23 @@ rf_w1 <- lmer(w1_re,
           control = glmerControl(optimizer = 'optimx',
                            optCtrl = list(method = 'L-BFGS-B')))
 
+### Error in lmer(w1_re, data = training, family = binomial, REML = FALSE,  : 
+###   unused argument (family = binomial)
+  
 # Random effects model for air temperature
 a1_re <- summerkill ~ long + lat + season + air_pca + (1 | site_id)
-
+   
 # Black magic
 re_a1 <- glmer(a1_re,
                data = training, 
                family = binomial, 
                control = glmerControl(optimizer = "bobyqa"),
                nAGQ = 10)
+
+### Warning message:
+### In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+###   Model is nearly unidentifiable: large eigenvalue ratio
+###  - Rescale variables?
 
 # Black magic
 rf_a1 <- lmer(a1_re, 
@@ -522,11 +603,19 @@ rf_a1 <- lmer(a1_re,
           control = glmerControl(optimizer = 'optimx',
                            optCtrl = list(method = 'L-BFGS-B')))
 
+### Error in lmer(a1_re, data = training, family = binomial, REML = FALSE,  : 
+###   unused argument (family = binomial)
+  
 # Save models
 write_rds(re_w1, "assessment/re_w1.rds")
 write_rds(rf_w1, "assessment/rf_w1.rds")
 write_rds(re_a1, "assessment/re_a1.rds")
 write_rds(rf_a1, "assessment/rf_a1.rds")
+
+
+# Remove models
+rm(re_w1, rf_w1,
+   re_a1, rf_a1)
 ```
 
 ######################################
