@@ -1125,8 +1125,7 @@ rm(spatial, census,
 
 ### Step 9: Add future water temperature data
 
-This reformats future water temperature estimates (2041-2059; 2081-2099) via the same methodology used to create the concurrent water temperature dataset. First, this processes annual and monthly data separately for computational efficiency. Second, this averages annual and monthly data across waterbodies with multiple site_ids. Third, z-scores are calculated for the mean and maximum surface and bottom water temperatures. Fourth, the first PC for maximum surface, mean surface, and maximum bottom temperatures is added as a separate column. These steps mimic those used in Till et al. (2019). 
-These temperature estimates are from Winslow et al. (2017), which used six models (ACCESS, CNRM, GFDL, IPSL, MIROC5, MRIS) from the Coupled Model Intercomparison Project Phase 5 (CMIP5) and were based on RCP 8.5 projections.
+This reformats future water temperature estimates (2041-2059; 2081-2099) via the same methodology used to create the concurrent water temperature dataset. First, this processes annual and monthly data separately for computational efficiency. Second, this averages annual and monthly data across waterbodies with multiple site_ids. Third, z-scores are calculated for the mean and maximum surface and bottom water temperatures. Fourth, the first PC for maximum surface, mean surface, and maximum bottom temperatures is added as a separate column. These temperature estimates are from Winslow et al. (2017), which used six models (ACCESS, CNRM, GFDL, IPSL, MIROC5, MRIS) from the Coupled Model Intercomparison Project Phase 5 (CMIP5) and were based on RCP 8.5 projections.
 
 ```{r: Add future water temperature data}
 # Load future water temperature data
