@@ -65,7 +65,7 @@ testing <- testing %>%
 The first generalized model uses a subset of variables selected based on their presumed effect and not being mutually non-correlated (at least strongly). Throughout the remaining code, models that are based on air or water temperature begin with "a" or "w", respectively.
 
 ```{r: First generalized model}
-# First generalized model for water temperature (removed population for now because of NAs)
+# First generalized model for water temperature (removed population for now because of NAs, otherwise same as Till)
 w1 <- summerkill ~ long + lat + season +
   variance_after_ice_30 + variance_after_ice_60 +
   log_schmidt + cumulative_above_10 + ice_duration + water_pca
@@ -77,13 +77,13 @@ a1 <- summerkill ~ long + lat + season + air_pca + max_air
 The second model involves all covariates except site_id, which we treat separately because of the number of levels.
 
 ```{r: Second generalized model}
-# Second generalized model for water temperature (removed population for now because of NAs)
+# Second generalized model for water temperature (removed population for now because of NAs, otherwise same as Till)
 w2 <- summerkill ~ long + lat + season + ice_duration +
   variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
     cumulative_above_10 + cumulative_above_5 + cumulative_above_0 + water_pca +
     max_bot + max_surf + mean_bot + mean_surf +
     max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
-    layer_diff + water_quad_temp + peak_temp 
+    layer_diff + water_quad_temp + peak_temp
 
 # Second generalized model for air temperature
 a2 <- summerkill ~ long + lat + season +
@@ -153,6 +153,9 @@ logistic_w2 <- step(logistic_w2)
 # Second generalized model for air temperature
 logistic_a2 <- glm(a2, training, family = "binomial") 
 
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
 # Stepwise model comparisons by AIC
 logistic_a2 <- step(logistic_a2)
 
@@ -185,6 +188,10 @@ lasso_w1_logloss <- train(w1,
                      metric = "mnLogLoss",
                      tuneGrid = par_grid,
                      trControl = control_logloss)
+
+### Warning message:
+### In train.default(x, y, weights = w, ...) :
+###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
 
 # First lasso model for air temperature
 lasso_a1_logloss <- train(a1,
