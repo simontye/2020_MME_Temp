@@ -56,7 +56,7 @@ testing <- testing %>%
 
 ```{r: Load models}
 # Change working directory
-setwd("../models/assessment") 
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models/assessment") 
 
 # Save file names
 model_names <- list.files()
@@ -67,8 +67,7 @@ all_models <- model_names %>%
 
 # Black magic
 all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."), 
-                                     1, -2),
-                     model = all_models)
+                                     1, -2), model = all_models)
 ```
 
 ### Step 3: Extract fitted values
@@ -108,6 +107,9 @@ all_models %>%
 Extract coefficients from each model.
 
 ```{r: Extract coefficients}
+# Print model results
+all_models$model
+
 # Black magic
 extract_coef <- function(model, name) {
   if ("train" %in% class(model)) {
@@ -116,7 +118,7 @@ extract_coef <- function(model, name) {
     out <- tibble(term = row.names(m),
                   estimate = m[, 1]) %>%
       filter(term != "(Intercept)") %>%
-      select(term, estimate)
+      dplyr::select(term, estimate)
   }
   if ("glmerMod" %in% class(model)) {
     out <- model %>%
@@ -124,13 +126,13 @@ extract_coef <- function(model, name) {
       filter(group == "fixed") %>%
       filter(term != "(Intercept)") %>%
       filter(p.value <= .3) %>%
-      select(term, estimate)
+      dplyr::select(term, estimate)
   }
   if ("glm" %in% class(model)) {
     out <- model %>%
       tidy() %>%
       filter(term != "(Intercept)") %>%
-      select(term, estimate)
+      dplyr::select(term, estimate)
   }
   out
 }
@@ -138,6 +140,11 @@ extract_coef <- function(model, name) {
 # Black magic
 all_models <- all_models %>%
   mutate(coef = map2(model, name, extract_coef))
+
+### Error: Problem with `mutate()` input `coef`.
+### x No tidy method for objects of class glmerMod
+### ℹ Input `coef` is `map2(model, name, extract_coef)`.
+### Run `rlang::last_error()` to see where the error occurred.
 ```
 
 ### Step 5: Plot coefficients
