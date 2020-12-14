@@ -21,7 +21,10 @@ rm(list = ls())
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/processed")
 
 # Load historical data
-df_historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
+df.historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
+
+# Remove NAs
+df.historical <- na.omit(df.historical)
 ```
 
 ### Step 2: Partition and scale data
@@ -30,15 +33,16 @@ This verifies formatting and partitions the data into training and testing sets,
 
 ```{r: Partition and scale data}
 # Verify formatting and recode summerkill
-df_historical <- df_historical %>%
+df.historical <- df.historical %>%
   mutate(site_id      = as.character(site_id),
          year         = as.character(year),
          month        = as.character(month),
          season       = as.character(season),
          summerkill   = as.character(summerkill),
-         ice_duration = as.double(ice_duration)) %>%
+         ice_duration = as.double(ice_duration),
+         pop_2010     = as.numeric(pop_2010)) %>%
   dplyr::select(., -c("anthropogenic", "infectious", "unknown", "winterkill",
-                      "event", "gnis_nm", "population")) %>% # removed population for now because there are NAs, messes with the models, need to fix
+                      "event", "gnis_nm")) %>%
   mutate(summerkill = fct_recode(summerkill,
                                  "neg" = "0",
                                  "pos" = "1"))
@@ -46,21 +50,21 @@ df_historical <- df_historical %>%
 set.seed(666)
 
 # Creates series of training partitions
-in_training <- createDataPartition(df_historical$summerkill, p = .75, list = FALSE)
+in.training <- createDataPartition(df.historical$summerkill, p = .75, list = FALSE)
 
 # Partition training data
-training <- df_historical  %>%
-  slice(in_training)
+training <- df.historical  %>%
+  slice(in.training)
 
 # Partition testing data
-testing  <- df_historical %>%
-  slice(-in_training)
+testing  <- df.historical %>%
+  slice(-in.training)
 
 # Scale data
-pre_proc_values <- preProcess(training, method = c("center", "scale"))
-training <- predict(pre_proc_values, training) %>%
+pre.proc.values <- preProcess(training, method = c("center", "scale"))
+training <- predict(pre.proc.values, training) %>%
   mutate(year = as.integer(year))
-testing  <- predict(pre_proc_values, testing) %>%
+testing  <- predict(pre.proc.values, testing) %>%
   mutate(summerkill = factor(testing$summerkill, 
                              levels = c("pos", "neg"), 
                              ordered = TRUE),
@@ -74,7 +78,8 @@ write_csv(training, "training.csv")
 write_csv(testing,  "testing.csv")
 
 # Remove dataframes
-rm(df_historical, in_training, pre_proc_values,
+rm(df.historical,
+   in.training, pre.proc.values,
    testing, training)
 ```
 

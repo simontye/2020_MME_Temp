@@ -22,6 +22,8 @@ library(Matrix)
 library(e1071)
 library(broom)
 library(yardstick)
+library(purrr)
+library(data.table)
 
 # Reset global environment
 rm(list = ls())
@@ -40,7 +42,8 @@ training <- training %>%
          month        = as.character(month),
          season       = as.character(season),
          summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration))
+         ice_duration = as.double(ice_duration),
+         pop_2010     = as.numeric(pop_2010))
 
 # Load testing data
 testing <- testing %>%
@@ -49,7 +52,8 @@ testing <- testing %>%
          month        = as.character(month),
          season       = as.character(season),
          summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration))
+         ice_duration = as.double(ice_duration),
+         pop_2010     = as.numeric(pop_2010))
 ```
 
 ### Step 2: Load models
@@ -61,9 +65,49 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/m
 # Save file names
 model_names <- list.files()
 
+##########################################################################################
+### There is an error that I can't figure out here. When trying to combine all of the
+### .rds files from the models using code from the Till workflow (see Attempt 1), it gives this message:
+
+### Error: 'lasso_a1_logloss_downsampled.rdsMapEnv' is not an exported object from 'namespace:maps'
+
+### I tried just removing this .rds file, and the same error arises for each file. Is the
+### .rdsMapEnv file a hidden and messing it up? I can't find anything about this online
+
+### Using a different method to combine the .rds files (see Attempt 2), I ran into this message:
+
+### Error in rbindlist(dat_list, fill = TRUE) : 
+###   Class attribute on column 1 of item 9 does not match with column 1 of item 1.
+
+### I found some code that forces the column attributes to match (not ideal; see Attempt 3).
+### This gives the following warning:
+
+### Warning messages:
+### 1: In `[<-`(`*tmp*`, rows, value = new("glmerMod", resp = new("glmResp",  :
+###   implicit list embedding of S4 objects is deprecated
+### 2: In `[<-`(`*tmp*`, rows, value = new("glmerMod", resp = new("glmResp",  :
+###   implicit list embedding of S4 objects is deprecated
+### 3: In `[<-`(`*tmp*`, rows, value = new("glmerMod", resp = new("glmResp",  :
+###   implicit list embedding of S4 objects is deprecated
+### 4: In `[<-`(`*tmp*`, rows, value = new("glmerMod", resp = new("glmResp",  :
+###   implicit list embedding of S4 objects is deprecated
+
+##########################################################################################
+
+### Attempt 1
 # Load models
 all_models <- model_names %>%
-  map(., ~read_rds(.x))
+  map(., ~read_rds(.))
+
+### Attempt 2
+all_models <- list.files(pattern = ".RDS") %>%
+  map(readRDS) %>% 
+  bind_rows()
+
+### Attempt 3
+model_names = list.files(path = '.', pattern = '*.rds$')
+dat_list = lapply(files, function (x) data.table(readRDS(x)))
+all_models = ldply(dat_list, data.frame)
 
 # Black magic
 all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."), 
@@ -108,7 +152,7 @@ Extract coefficients from each model.
 
 ```{r: Extract coefficients}
 # Print model results
-all_models$model
+all_models$name
 
 # Black magic
 extract_coef <- function(model, name) {

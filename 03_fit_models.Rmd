@@ -48,7 +48,8 @@ training <- training %>%
          month        = as.character(month),
          season       = as.character(season),
          summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration))
+         ice_duration = as.double(ice_duration),
+         pop_2010     = as.numeric(pop_2010))
 
 # Reformat testing data
 testing <- testing %>%
@@ -57,7 +58,8 @@ testing <- testing %>%
          month        = as.character(month),
          season       = as.character(season),
          summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration))
+         ice_duration = as.double(ice_duration),
+         pop_2010     = as.numeric(pop_2010))
 ```
 
 ### Step 2: Specify variable sets
@@ -65,13 +67,13 @@ testing <- testing %>%
 The first generalized model uses a subset of variables selected based on their presumed effect and not being mutually non-correlated (at least strongly). Throughout the remaining code, models that are based on air or water temperature begin with "a" or "w", respectively.
 
 ```{r: First generalized model}
-# First generalized model for water temperature (removed population for now because of NAs, otherwise same as Till)
-w1 <- summerkill ~ long + lat + season +
+# First generalized model for water temperature
+w1 <- summerkill ~ long + lat + season + pop_2010 +
   variance_after_ice_30 + variance_after_ice_60 +
   log_schmidt + cumulative_above_10 + ice_duration + water_pca
 
 # First generalized model for air temperature
-a1 <- summerkill ~ long + lat + season + air_pca + max_air
+a1 <- summerkill ~ long + lat + season + pop_2010 + air_pca
 ```
 
 The second model involves all covariates except site_id, which we treat separately because of the number of levels.
@@ -80,7 +82,7 @@ The second model involves all covariates except site_id, which we treat separate
 # Second generalized model for water temperature (removed population for now because of NAs, otherwise same as Till)
 w2 <- summerkill ~ long + lat + season + ice_duration +
   variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-    cumulative_above_10 + cumulative_above_5 + cumulative_above_0 + water_pca +
+    cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
     max_bot + max_surf + mean_bot + mean_surf +
     max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
     layer_diff + water_quad_temp + peak_temp
@@ -89,7 +91,7 @@ w2 <- summerkill ~ long + lat + season + ice_duration +
 a2 <- summerkill ~ long + lat + season +
   min_air + mean_air + max_air + 
   min_air_z + mean_air_z + max_air_z +
-  air_quad_temp + air_pca
+  air_quad_temp
 ```
 
 ### Step 3: Set up parameters for lambda selection for ridge and lasso regressions
@@ -115,7 +117,7 @@ control_logloss_ds <- trainControl(method = "repeatedcv",
 
 ### Step 4: Logistic regressions
 
-First set of generalized models from above (w1 and a1).
+First set of generalized models (w1 and a1)
 
 ```{r: First logistic regression}
 # Set seed
@@ -141,32 +143,20 @@ write_rds(logistic_a1, "assessment/logistic_a1.rds")
 rm(logistic_w1, logistic_a1)
 ```
 
-Second set of generalized model from above (w2 and a2).
+Second set of generalized model (w2 and a2)
 
 ```{r: Second logistic regression}
 # Second generalized model for water temperature
 logistic_w2 <- glm(w2, training, family = "binomial") 
 
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
-
 # Stepwise model comparisons by AIC
 logistic_w2 <- step(logistic_w2)
-
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
 # Second generalized model for air temperature
 logistic_a2 <- glm(a2, training, family = "binomial") 
 
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
-
 # Stepwise model comparisons by AIC
 logistic_a2 <- step(logistic_a2)
-
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
 # Save models
 write_rds(logistic_w2, "assessment/logistic_w2.rds")
@@ -204,18 +194,6 @@ lasso_w1_logloss <- train(w1,
 ### Warning messages:
 ### 1: In train.default(x, y, weights = w, ...) :
 ###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
-### 2: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 8 (<-localhost:11642)
-### 3: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 7 (<-localhost:11642)
-### 4: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 6 (<-localhost:11642)
-### 5: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 5 (<-localhost:11642)
-### 6: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 4 (<-localhost:11642)
-### 7: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 3 (<-localhost:11642)
 
 # First lasso model for air temperature
 lasso_a1_logloss <- train(a1,
@@ -263,7 +241,6 @@ lasso_w1_logloss_downsampled <- train(w1,
                                       tuneGrid = par_grid,
                                       trControl = control_logloss_ds)
 
-
 # First lasso model for air temperature
 lasso_a1_logloss_downsampled <- train(a1, 
                                       data = training, 
@@ -271,6 +248,7 @@ lasso_a1_logloss_downsampled <- train(a1,
                                       metric = "logLoss",
                                       tuneGrid = par_grid,
                                       trControl = control_logloss_ds)
+
 # Black magic
 stopCluster(cl)
 
@@ -345,7 +323,7 @@ registerDoParallel(cl)
                         #              length.out = 6))
 
 # Set seed
-set.seed(699)
+set.seed(697)
 
 # Second lasso model for water temperature
 lasso_w2_logloss_downsampled <- train(w2, 
@@ -447,7 +425,6 @@ ridge_w1_logloss_downsampled <- train(w1,
                                       metric = "logLoss",
                                       tuneGrid = par_grid,
                                       trControl = control_logloss_ds)
-
 
 # First ridge model for air temperature
 ridge_a1_logloss_downsampled <- train(a1, 
@@ -563,23 +540,17 @@ re_w1 <- glmer(w1_re,
                control = glmerControl(optimizer = "bobyqa"),
                nAGQ = 10)
 
-### Warning messages:
-### 1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-###   unable to evaluate scaled gradient
-### 2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-###    Hessian is numerically singular: parameters are not uniquely determined
+### boundary (singular) fit: see ?isSingular
    
-# Black magic
-rf_w1 <- lmer(w1_re, 
-          data = training,
-          family = binomial,
-          REML = FALSE, 
-          control = glmerControl(optimizer = 'optimx',
-                           optCtrl = list(method = 'L-BFGS-B')))
+# Black magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
+rf_w1 <- glmer(w1_re, 
+               data = training,
+               family = binomial,
+               control = glmerControl(optimizer = 'optimx',
+                                      optCtrl = list(method = 'L-BFGS-B')))
 
-### Error in lmer(w1_re, data = training, family = binomial, REML = FALSE,  : 
-###   unused argument (family = binomial)
-  
+### boundary (singular) fit: see ?isSingular
+
 # Random effects model for air temperature
 a1_re <- summerkill ~ long + lat + season + air_pca + (1 | site_id)
    
@@ -590,21 +561,16 @@ re_a1 <- glmer(a1_re,
                control = glmerControl(optimizer = "bobyqa"),
                nAGQ = 10)
 
-### Warning message:
-### In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-###   Model is nearly unidentifiable: large eigenvalue ratio
-###  - Rescale variables?
+### boundary (singular) fit: see ?isSingular
 
-# Black magic
-rf_a1 <- lmer(a1_re, 
-          data = training,
-          family = binomial,
-          REML = FALSE, 
-          control = glmerControl(optimizer = 'optimx',
-                           optCtrl = list(method = 'L-BFGS-B')))
+# Black magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
+rf_a1 <- glmer(a1_re, 
+               data = training,
+               family = binomial,
+               control = glmerControl(optimizer = 'optimx',
+                                      optCtrl = list(method = 'L-BFGS-B')))
 
-### Error in lmer(a1_re, data = training, family = binomial, REML = FALSE,  : 
-###   unused argument (family = binomial)
+### boundary (singular) fit: see ?isSingular
   
 # Save models
 write_rds(re_w1, "assessment/re_w1.rds")

@@ -11,7 +11,7 @@ This file combines fishkill data from Minnesota (Phelps et al. 2019) and Wiscons
 
 ### Folders in data/raw:
 
-- `census_data`:                   Census data (2010) from US Census Bureau
+- `census_data`:                   Data from US Census Bureau (2010)
 - `lake_shapes`:                   GIS outlines of lake shapes
 - `PRISM_precip`:                  Precipitation estimates (http://prism.oregonstate.edu)
 - `temp_air`:                      Historical and future air temperature estimates from NOAA and PRISM (http://prism.oregonstate.edu)
@@ -29,6 +29,7 @@ This file combines fishkill data from Minnesota (Phelps et al. 2019) and Wiscons
 - `ACCESS_thermal_metrics.tsv`:    Future water temperature data (2041-2059; 2081-2099)
 - `localities.csv`:                Coordinates for waterbodies in the upper midwest
 - `mme_temp_missing.kml`:          Locations of waterbodies that had missing coordinates
+- `2010_census.csv`:               Data from US Census Bata (2010)
 
 ### Step 1: Load packages and data
 
@@ -57,6 +58,7 @@ library(maps)
 library(ncdf4)
 library(anchors)
 library(maptools)
+library(stringr)
 
 # Reset global environment
 rm(list = ls())
@@ -72,6 +74,7 @@ site.id      <- read.csv(file = "data/raw/Site_ID.csv", head = TRUE, sep = ",")
 hist.water   <- read.csv(file = "data/raw/temp_water.csv", head = TRUE, sep = ",")
 hist.air.1   <- read.csv(file = "data/raw/prism_1.csv", head = TRUE, sep = ",")
 hist.air.2   <- read.csv(file = "data/raw/prism_2.csv", head = TRUE, sep = ",")
+census       <- read.csv(file = "data/raw/2010_census.csv", head = TRUE, sep = ",")
 ```
 
 ### Step 2: Add Minnesota fishkill data
@@ -1031,14 +1034,14 @@ coordinates <- subset(df.historical, select = c("long", "lat"))
 latlong2county <- function(pointsDF) {
     # Prepare SpatialPolygons object with one SpatialPolygon
     # per county
-    counties <- map('county', fill=TRUE, col="transparent", plot=FALSE)
+    counties <- map('county', fill = TRUE, col = "transparent", plot = FALSE)
     IDs <- sapply(strsplit(counties$names, ":"), function(x) x[1])
-    counties_sp <- map2SpatialPolygons(counties, IDs=IDs,
-                     proj4string=CRS("+proj=longlat +datum=WGS84"))
+    counties_sp <- map2SpatialPolygons(counties, IDs = IDs,
+                     proj4string = CRS("+proj=longlat +datum=WGS84"))
 
     # Convert pointsDF to a SpatialPoints object 
     pointsSP <- SpatialPoints(pointsDF, 
-                    proj4string=CRS("+proj=longlat +datum=WGS84"))
+                    proj4string = CRS("+proj=longlat +datum=WGS84"))
 
     # Use 'over' to get _indices_ of the Polygons object containing each point 
     indices <- over(pointsSP, counties_sp)
@@ -1095,32 +1098,47 @@ df.historical <- df.historical %>%
   rename(long  = long.y,
          lat   = lat.y)
 
-# Add 2010 census data
-census <- readOGR(dsn = path.expand("data/raw/census_data"), layer = "tabblock2010_55_pophu")
-census.df <- coordinates(census) %>%
-  as.data.frame() %>%
-  add_column(population = census@data$POP10) %>%
-  rename(lat = V2,
-         lon = V1) %>%
-  mutate(lon_round = round(lon, 1),
-         lat_round = round(lat, 1)) %>%
-  group_by(lon_round, lat_round) %>%
-  summarize(population = sum(population)) %>%
-  dplyr::select(lon_round, lat_round, population)
+## Add 2010 census data
+#census <- readOGR(dsn = path.expand("data/raw/census_data"), layer = "tabblock2010_55_pophu")
+#census.df <- coordinates(census) %>%
+#  as.data.frame() %>%
+#  add_column(population = census@data$POP10) %>%
+#  rename(lat = V2,
+#         long = V1) %>%
+#  mutate(long_round = round(long, 1),
+#         lat_round = round(lat, 1)) %>%
+#  group_by(long_round, lat_round) %>%
+#  summarize(population = sum(population)) %>%
+#  dplyr::select(long_round, lat_round, population)
 
-# Join population data by matching to the nearest GPS coordinates
+## Join population data by matching to the nearest GPS coordinates
+#df.historical <- df.historical %>%
+#  mutate(long_round = round(long, 1),
+#         lat_round =  round(lat, 1)) %>%
+#  left_join(census.df, by = c("long_round", "lat_round")) %>%
+#  dplyr::select(-long_round, -lat_round)
+
+# Remove "county" from county names in census data
+census$county <- str_sub(census$county, end = -8)
+
+# Reformat census data
+census <- census %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower)
+
+# Merge census data with historical df
 df.historical <- df.historical %>%
-  mutate(lon_round = round(long, 1),
-         lat_round  = round(lat, 1)) %>%
-  left_join(census.df, by = c("lon_round", "lat_round")) %>%
-  dplyr::select(-lon_round, -lat_round)
+  left_join(census, by = c("county", "state")) %>%
+  mutate(pop_2010 = as.character(pop_2010))
+
+# Remove commas from population estimates
+df.historical$pop_2010 <- as.numeric(gsub(",","",df.historical$pop_2010))
 
 # Save historical dataframe
 write.csv(df.historical, "data/processed/df_historical.csv", row.names = FALSE)
 
 # Remove unnecessary dataframes
-rm(spatial, census,
-   fish, df.historical)
+rm(spatial, fish, df.historical)
 ```
 
 ### Step 9: Add future water temperature data
@@ -1235,16 +1253,11 @@ water_pca <- future.water.monthly %>%
 future.water.monthly <- future.water.monthly %>%
   add_column(water_pca)
 
-# Add spatial and census data to future water temperature data
+# Add spatial data to future water temperature data
 df.future <- future.water.monthly %>%
   left_join(future.water.annual, by = c("year", "site_id")) %>%
   dplyr::select(-lat, -long) %>%
-  left_join(spatial.df, by = "site_id") %>%
-  mutate(lon_round = round(long, 1),
-         lat_round = round(lat, 1)) %>%
-  left_join(census.df, by = c("lon_round", "lat_round")) %>%
-  dplyr::select(-lon_round, -lat_round) %>%
-  mutate(year = as.numeric(year))
+  left_join(spatial.df, by = "site_id")
 
 # Remove unneccesary dataframes
 rm(water.pr, water_pca, future.water,
@@ -1640,9 +1653,8 @@ df.future <- df.future %>%
   ungroup() %>%
   mutate(air_quad_temp = mean_air^2)
 
-# Remove population (too many NAs) and missing air temperature data (a few NAs)
+## Remove missing air temperature data
 df.future <- df.future %>%
-  dplyr::select(., -c("population")) %>%
   subset(., !is.na(mean_air)) %>%
   subset(., !is.na(min_air)) %>%
   subset(., !is.na(max_air))
@@ -1688,11 +1700,19 @@ df.future <- df.future %>%
          state = ifelse(state == "wisconsin", "wi", state),
          state = ifelse(state == "michigan",  "mi", state))
 
+# Merge census data with historical df
+df.future <- df.future %>%
+  left_join(census, by = c("county", "state")) %>%
+  mutate(pop_2010 = as.character(pop_2010))
+
+# Remove commas from population estimates
+df.future$pop_2010 <- as.numeric(gsub(",","",df.future$pop_2010))
+
 # Save processed data
 write_csv(df.future, "data/processed/df_future.csv")
 
 # Remove unneccessary dataframes
-rm(df.future, site.id, latlong2county)
+rm(df.future, site.id, census, latlong2county)
 ```
 
 ### Step 11: Add snowfall data
@@ -1742,7 +1762,7 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp")
 write_csv(df.snow, "data/processed/df_snow.csv")
 
 # Remove unneccessary dataframes
-rm(file_names, df.snow)
+rm(file_names, df.snow, tidy_snow)
 ```
 
 ######################################
