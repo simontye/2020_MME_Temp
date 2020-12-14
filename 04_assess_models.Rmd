@@ -96,22 +96,24 @@ model_names <- list.files()
 
 ### Attempt 1
 # Load models
-all_models <- model_names %>%
-  map(., ~read_rds(.))
+#all_models <- model_names %>%
+#  map(., ~read_rds(.))
+
+# Error: 'lasso_a1_logloss_downsampled.rdsMapEnv' is not an exported object from 'namespace:maps'
 
 ### Attempt 2
-all_models <- list.files(pattern = ".RDS") %>%
-  map(readRDS) %>% 
-  bind_rows()
+#all_models <- list.files(pattern = ".RDS") %>%
+#  map(readRDS) %>% 
+#  bind_rows()
 
 ### Attempt 3
 model_names = list.files(path = '.', pattern = '*.rds$')
-dat_list = lapply(files, function (x) data.table(readRDS(x)))
-all_models = ldply(dat_list, data.frame)
+all_models = lapply(model_names, function (x) data.table(readRDS(x)))
+#all_models = ldply(dat_list, data.frame)
 
 # Black magic
-all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."), 
-                                     1, -2), model = all_models)
+all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."),
+                                    1, -2), model = all_models)
 ```
 
 ### Step 3: Extract fitted values
