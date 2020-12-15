@@ -149,11 +149,15 @@ Second set of generalized model (w2 and a2)
 # Second generalized model for water temperature
 logistic_w2 <- glm(w2, training, family = "binomial") 
 
+# glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
 # Stepwise model comparisons by AIC
 logistic_w2 <- step(logistic_w2)
 
 # Second generalized model for air temperature
 logistic_a2 <- glm(a2, training, family = "binomial") 
+
+# glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
 # Stepwise model comparisons by AIC
 logistic_a2 <- step(logistic_a2)
@@ -194,6 +198,18 @@ lasso_w1_logloss <- train(w1,
 ### Warning messages:
 ### 1: In train.default(x, y, weights = w, ...) :
 ###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
+### 2: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 8 (<-localhost:11023)
+### 3: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 7 (<-localhost:11023)
+### 4: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 6 (<-localhost:11023)
+### 5: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 5 (<-localhost:11023)
+### 6: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 4 (<-localhost:11023)
+### 7: In .Internal(gc(verbose, reset, full)) :
+###   closing unused connection 3 (<-localhost:11023)
 
 # First lasso model for air temperature
 lasso_a1_logloss <- train(a1,
@@ -540,7 +556,11 @@ re_w1 <- glmer(w1_re,
                control = glmerControl(optimizer = "bobyqa"),
                nAGQ = 10)
 
-### boundary (singular) fit: see ?isSingular
+### Warning messages:
+### 1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+###   unable to evaluate scaled gradient
+### 2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+###    Hessian is numerically singular: parameters are not uniquely determined
    
 # Black magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
 rf_w1 <- glmer(w1_re, 
@@ -548,8 +568,6 @@ rf_w1 <- glmer(w1_re,
                family = binomial,
                control = glmerControl(optimizer = 'optimx',
                                       optCtrl = list(method = 'L-BFGS-B')))
-
-### boundary (singular) fit: see ?isSingular
 
 # Random effects model for air temperature
 a1_re <- summerkill ~ long + lat + season + air_pca + (1 | site_id)
@@ -561,8 +579,12 @@ re_a1 <- glmer(a1_re,
                control = glmerControl(optimizer = "bobyqa"),
                nAGQ = 10)
 
-### boundary (singular) fit: see ?isSingular
-
+### Warning messages:
+### 1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+###   unable to evaluate scaled gradient
+### 2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+###    Hessian is numerically singular: parameters are not uniquely determined
+   
 # Black magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
 rf_a1 <- glmer(a1_re, 
                data = training,
@@ -570,14 +592,11 @@ rf_a1 <- glmer(a1_re,
                control = glmerControl(optimizer = 'optimx',
                                       optCtrl = list(method = 'L-BFGS-B')))
 
-### boundary (singular) fit: see ?isSingular
-  
 # Save models
 write_rds(re_w1, "assessment/re_w1.rds")
 write_rds(rf_w1, "assessment/rf_w1.rds")
 write_rds(re_a1, "assessment/re_a1.rds")
 write_rds(rf_a1, "assessment/rf_a1.rds")
-
 
 # Remove models
 rm(re_w1, rf_w1,
