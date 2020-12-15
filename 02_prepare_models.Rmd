@@ -22,10 +22,6 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/p
 
 # Load historical data
 df.historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
-
-test <- na.omit(df.historical)
-df[!is.na(df$B), ]
-
 ```
 
 ### Step 2: Partition and scale data
