@@ -319,8 +319,9 @@ mn.fish.2 <- mn.fish.2[!(mn.fish.2$event == "s2011188" | mn.fish.2$event == "s20
 # Sums the number of fish families and species for each event. The taxonomic resolution of observations varies, and this code is conservative. It considers all observations that may have been of the same species as a single species (e.g., bass + largemouth bass = 1 species). To do this, I sum the columns of unique species, then use ifelse statements to only add one species for coarse taxonomic categorizations.
 mn.fish <- mn.fish.1 %>%
   merge(., mn.fish.2, all = TRUE) %>%
+  rename(gizzard.shad = gizzard.gizzard.shad) %>%
   mutate(month = as.numeric(month),
-         clupeidae = ifelse(gizzard.gizzard.shad >= 1, 1, 0)) %>% # add missing family column
+         clupeidae = ifelse(gizzard.shad >= 1, 1, 0)) %>% # add missing family column
   mutate_at(c(13:53), as.numeric) %>% # convert families and species to numeric
   mutate(fish_families = rowSums(.[, c(13:22, 53)], na.rm = TRUE), # sum families
          fish_species  = rowSums(.[, c(23, 27:34 ,38:40, 42:47)], na.rm = TRUE), # sum species (exceptions below)
@@ -541,13 +542,10 @@ fish <- mn.fish %>%
   mutate(year = as.numeric(year),
          cold_temp = ifelse(trout >= 1 | brown.trout >= 1 & !is.na(trout) & !is.na(brown.trout), 1, 0), # Cold in Lyons et al., 2009
          cool_temp = ifelse(northern.pike >= 1 | walleye >= 1 | white.sucker >= 1 | yellow.perch >= 1 | chub >= 1 | dace >= 1 | yellow.perch >= 1 | stickleback >= 1 & !is.na(northern.pike) & !is.na(walleye) & !is.na(white.sucker) & !is.na(yellow.perch) & !is.na(chub) & !is.na(dace) & !is.na(yellow.perch) & !is.na(stickleback), 1, 0), # Trans in Lyons et al., 2019
-         warm_temp = ifelse(bullhead >= 1 | largemouth.bass >= 1 | smallmouth.bass >= 1 | channel.catfish >= 1 | freshwater.drum >= 1 | redhorse >= 1 | sunfish >= 1 | bass >= 1 | freshwater.drum >= 1 | stonecat >= 1 | gizzard.gizzard.shad >= 1 | drum >= 1 | rockbass >= 1 | gar >= 1 | gizzard.shad >= 1 | sheapshead >= 1 | catfish >= 1 | bigmouth.buffalo >= 1 | pumpkinseed >= 1 | golden.shiner >= 1 | blowfin >= 1 | dogfish >= 1 | minnow >= 1 | darter >= 1 | perch >= 1 | suckerfish >= 1 | crappie >= 1 & !is.na(bullhead) & !is.na(largemouth.bass) & !is.na(smallmouth.bass) & !is.na(channel.catfish) & !is.na(freshwater.drum) & !is.na(redhorse) & !is.na(sunfish) & !is.na(bass) & !is.na(freshwater.drum) & !is.na(stonecat) & !is.na(gizzard.gizzard.shad) & !is.na(drum) & !is.na(rockbass) & !is.na(gar) & !is.na(gizzard.shad) & !is.na(sheapshead) & !is.na(catfish) & !is.na(bigmouth.buffalo) & !is.na(pumpkinseed) & !is.na(golden.shiner) & !is.na(blowfin) & !is.na(dogfish) & !is.na(minnow) & !is.na(darter) & !is.na(perch) & !is.na(suckerfish) & !is.na(crappie), 1, 0), # Warm in Lyons et al., 2019
+         warm_temp = ifelse(bullhead >= 1 | largemouth.bass >= 1 | smallmouth.bass >= 1 | channel.catfish >= 1 | freshwater.drum >= 1 | redhorse >= 1 | sunfish >= 1 | bass >= 1 | freshwater.drum >= 1 | stonecat >= 1 | drum >= 1 | rockbass >= 1 | gar >= 1 | gizzard.shad >= 1 | sheapshead >= 1 | catfish >= 1 | bigmouth.buffalo >= 1 | pumpkinseed >= 1 | golden.shiner >= 1 | blowfin >= 1 | dogfish >= 1 | minnow >= 1 | darter >= 1 | perch >= 1 | suckerfish >= 1 | crappie >= 1 & !is.na(bullhead) & !is.na(largemouth.bass) & !is.na(smallmouth.bass) & !is.na(channel.catfish) & !is.na(freshwater.drum) & !is.na(redhorse) & !is.na(sunfish) & !is.na(bass) & !is.na(freshwater.drum) & !is.na(stonecat) & !is.na(drum) & !is.na(rockbass) & !is.na(gar) & !is.na(gizzard.shad) & !is.na(sheapshead) & !is.na(catfish) & !is.na(bigmouth.buffalo) & !is.na(pumpkinseed) & !is.na(golden.shiner) & !is.na(blowfin) & !is.na(dogfish) & !is.na(minnow) & !is.na(darter) & !is.na(perch) & !is.na(suckerfish) & !is.na(crappie), 1, 0), # Warm in Lyons et al., 2019
          unknown_temp = ifelse(cisco >= 1 | rainbow.smelt >= 1 | muskies >= 1 | sauger >= 1 | whitefish >= 1 | sturgeon >= 1 | round.goby >= 1 & !is.na(cisco) & !is.na(rainbow.smelt) & !is.na(muskies) & !is.na(sauger) & !is.na(whitefish) & !is.na(sturgeon) & !is.na(round.goby), 1, 0)) %>%
-  dplyr::select(., -c(10, 13:30, 36, 39:77, 79:83)) %>% # removes fish families and species
-  .[with(., order(.$fish_families)), ] # sorts by presence of taxa observations
-
-# Replaces NAs with 0s for events that documented at least one taxa. The last function orders the rows by number of documented taxa to change the top rows that included at least one taxa observation.
-fish[1:321, 20:23][is.na(fish[1:321, 20:23])] = 0
+  #dplyr::select(., -c(10, 13:30, 36, 39:77, 79:83)) %>% # removes fish families and species
+  mutate_at(c(13:76, 78:86), ~replace(., is.na(.), 0)) # replaces NAs with 0s for all species/family observations, temperature categories, and fishkill causes
 
 # Removes unnecessary dataframes
 rm(mn.fish, wi.fish)
@@ -1027,8 +1025,8 @@ This adds geographic (county, state) and 2010 US census data to the historical d
 # Isolate coordinates to determine county and state of each waterbody
 coordinates <- subset(df.historical, select = c("long", "lat"))
 
-# The single argument to this function, pointsDF, is a data.frame in which:
-#   - column 1 contains the longitude in degrees (negative in the US)
+# The single argument to this function, pointsDF, is a dataframe in which:
+#   - column 1 contains the longitude in degrees
 #   - column 2 contains the latitude in degrees
 
 latlong2county <- function(pointsDF) {
@@ -1062,17 +1060,15 @@ df.historical$state <- county.state
 rm(coordinates, localities, sites, county.state)
 
 # Create county and state columns from date column
-df.historical[50:51] <- do.call('rbind', strsplit(as.character(df.historical$state), ','))
+df.historical[113:114] <- do.call('rbind', strsplit(as.character(df.historical$state), ','))
 
 # Rename and reformat year and month columns
 df.historical <- df.historical %>%
   rename(county  = V2) %>%
   mutate(state = ifelse(state == "minnesota", "mn", state),
          state = ifelse(state == "wisconsin", "wi", state),
-         state = ifelse(state == "michigan",  "mi", state))
-
-# Fill empty cells for fish_families, fish_species, and fishkill causes with 0s if there was not a fishkill event
-df.historical[, 27:37][is.na(df.historical[, 27:37])] = 0
+         state = ifelse(state == "michigan",  "mi", state)) %>%
+    mutate_at(c(28:100), ~replace(., is.na(.), 0)) # replaces NAs with 0s for all species/family observations, temperature categories, and fishkill causes
 
 # Load spatial data
 spatial <- readOGR(dsn = path.expand("data/raw/lake_shapes"), layer = "model_lakes")
@@ -1093,12 +1089,12 @@ spatial.df <- spatial.df %>%
 # Merge spatial data
 df.historical <- df.historical %>%
   inner_join(spatial.df, by = "site_id") %>%
-  mutate(long.x = NULL,
+  mutate(long.x = NULL, # removes old coordinates
          lat.x  = NULL) %>%
-  rename(long  = long.y,
-         lat   = lat.y)
+  rename(long = long.y, # keeps new coordinates
+         lat  = lat.y)
 
-## Add 2010 census data
+## Add 2010 census data (Till method)
 #census <- readOGR(dsn = path.expand("data/raw/census_data"), layer = "tabblock2010_55_pophu")
 #census.df <- coordinates(census) %>%
 #  as.data.frame() %>%
@@ -1651,11 +1647,8 @@ df.future <- df.future %>%
          mean_air_z = scale(mean_air),
          min_air_z  = scale(min_air)) %>%
   ungroup() %>%
-  mutate(air_quad_temp = mean_air^2)
-
-## Remove missing air temperature data
-df.future <- df.future %>%
-  subset(., !is.na(mean_air)) %>%
+  mutate(air_quad_temp = mean_air^2) %>%
+  subset(., !is.na(mean_air)) %>% # remove rows with missing air temp data
   subset(., !is.na(min_air)) %>%
   subset(., !is.na(max_air))
 
