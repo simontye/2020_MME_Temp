@@ -520,11 +520,11 @@ rm(wi.fish.1, wi.fish.2, wi.fish.3,
    wi.columns, wi.duplicates)
 ```
 
-### Step 4: Format final fishkill dataset
+### Step 4: Combine fishkill datasets
 
 This combines the MN and WI fishkill datasets First, this removes all fishkill events that occurred in waterways (e.g., contained "river" or "creek" in the waterbody name). Second, this classifies the observed taxa as cold-, cool- (trans or transitionary), or warm-water designations (Table 2, Lyons et al. 2009). For taxonomic groups with numerous designations, I associated them with the most common designation for that group. Third, this ensures that all fishkill events include presence/absences of taxa (e.g., 0 or 1), and all non-fishkill events include NAs throughout the applicable columns. 
 
-```{r: Format combined fishkill dataset}
+```{r: Combine fishkill datasets}
 # Merges MN and WI fishkill data, then categorizes taxa observations into cold-, trans- (cool), and warm-water designations (Table 2; Lyons et al., 2009). For non-species specific observations (e.g., minnow), the temperature designation of most species within the observed group was used. Those particular cases are hashed out below:
 
 # "dace"         -> 6/7 trans
@@ -535,6 +535,7 @@ This combines the MN and WI fishkill datasets First, this removes all fishkill e
 # "pike"         -> 1/2 warm/trans
 # "suckerfish"   -> 10/12 warm
 
+# Merges MN and WI fishkill data
 fish <- mn.fish %>%
   merge(., wi.fish, all = TRUE) %>% # merges MN and WI fishkill data
   .[- grep("creek", .$waterbody.name), ] %>% # removes waterbody names that contain "creek"
@@ -544,8 +545,8 @@ fish <- mn.fish %>%
          cool_temp = ifelse(northern.pike >= 1 | walleye >= 1 | white.sucker >= 1 | yellow.perch >= 1 | chub >= 1 | dace >= 1 | yellow.perch >= 1 | stickleback >= 1 & !is.na(northern.pike) & !is.na(walleye) & !is.na(white.sucker) & !is.na(yellow.perch) & !is.na(chub) & !is.na(dace) & !is.na(yellow.perch) & !is.na(stickleback), 1, 0), # Trans in Lyons et al., 2019
          warm_temp = ifelse(bullhead >= 1 | largemouth.bass >= 1 | smallmouth.bass >= 1 | channel.catfish >= 1 | freshwater.drum >= 1 | redhorse >= 1 | sunfish >= 1 | bass >= 1 | freshwater.drum >= 1 | stonecat >= 1 | drum >= 1 | rockbass >= 1 | gar >= 1 | gizzard.shad >= 1 | sheapshead >= 1 | catfish >= 1 | bigmouth.buffalo >= 1 | pumpkinseed >= 1 | golden.shiner >= 1 | blowfin >= 1 | dogfish >= 1 | minnow >= 1 | darter >= 1 | perch >= 1 | suckerfish >= 1 | crappie >= 1 & !is.na(bullhead) & !is.na(largemouth.bass) & !is.na(smallmouth.bass) & !is.na(channel.catfish) & !is.na(freshwater.drum) & !is.na(redhorse) & !is.na(sunfish) & !is.na(bass) & !is.na(freshwater.drum) & !is.na(stonecat) & !is.na(drum) & !is.na(rockbass) & !is.na(gar) & !is.na(gizzard.shad) & !is.na(sheapshead) & !is.na(catfish) & !is.na(bigmouth.buffalo) & !is.na(pumpkinseed) & !is.na(golden.shiner) & !is.na(blowfin) & !is.na(dogfish) & !is.na(minnow) & !is.na(darter) & !is.na(perch) & !is.na(suckerfish) & !is.na(crappie), 1, 0), # Warm in Lyons et al., 2019
          unknown_temp = ifelse(cisco >= 1 | rainbow.smelt >= 1 | muskies >= 1 | sauger >= 1 | whitefish >= 1 | sturgeon >= 1 | round.goby >= 1 & !is.na(cisco) & !is.na(rainbow.smelt) & !is.na(muskies) & !is.na(sauger) & !is.na(whitefish) & !is.na(sturgeon) & !is.na(round.goby), 1, 0)) %>%
-  #dplyr::select(., -c(10, 13:30, 36, 39:77, 79:83)) %>% # removes fish families and species
-  mutate_at(c(13:76, 78:86), ~replace(., is.na(.), 0)) # replaces NAs with 0s for all species/family observations, temperature categories, and fishkill causes
+  dplyr::select(., -c(10, 21:31, 42:76)) %>% # removes fish species
+  mutate_at(c(12:29, 31:39), ~replace(., is.na(.), 0)) # replaces NAs with 0s for all species/family observations, temperature categories, and fishkill causes
 
 # Removes unnecessary dataframes
 rm(mn.fish, wi.fish)
@@ -600,14 +601,14 @@ ggplot(data = states, mapping = aes(x = long, y = lat)) +
 rm(counties, states, fish.map)
 ```
 
-### Step 6: Add historical water temperature data
+### Step 6: Add water temperature to historical dataset
 
 This reformats the historical water temperature data (2003-2013). First, this removes water temperature data that predates the fishkill dataset, then processes annual and monthly data separately for computational efficiency. Second, annual and monthly data are averaged across waterbodies with multiple site_ids. Third, z-scores are calculated for the mean and maximum surface and bottom water temperatures. Fourth, the first PC for maximum surface, mean surface, and maximum bottom temperatures is added as a separate column. These steps mimic those used in Till et al. (2019). These temperature estimates are from Winslow et al. (2017), which used six models (ACCESS, CNRM, GFDL, IPSL, MIROC5, MRIS) from the Coupled Model Intercomparison Project Phase 5 (CMIP5).
 
 - `z-score`:    For each water temperature variable via subtraction of the lake x monthly average then division by the SD.
 - `water_pca`:  Single PC for all water temperature data.
 
-```{r: Add historical water temperature data}
+```{r: Add water temperature data}
 # Reformat water temperature dataset
 hist.water <- hist.water %>%
   rename_all(tolower) %>%
@@ -726,16 +727,16 @@ rm(hist.water.annual, hist.water.month,
    water.pr, water_pca)
 ```
 
-### Step 7a: Add historical air temperature data (NOAA)
+### Step 7a: Add air temperature data (NOAA) to historical dataset
 
 This was my first attempt at obtaining recent air temperature data (2003-2014). This dataset includes daily air temperature data for all Minnesota and Wisconsin weather stations from NOAA (https://www.ncdc.noaa.gov/cdo-web/search?datasetid=GHCND). However, there are many missing data for both states, and so I decided to use air temperature estimates from PRISM instead (Step 7b). This is all hashed out for a rainy day. For this particular step, I first merged all air temperature data using BASH. I then reformatted the date columns across datasets and calculated the monthly and annual averages of maximum, mean, and minimum air temperatures. Weather stations were then associated with the nearest waterbody centroid.
 
-```{bash: Add historical air temperature data (NOAA)}
+```{bash: Add air temperature data}
 #cd /Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/raw/temp
 #awk 'FNR>1' *.csv > ../air_temp.csv
 ```
 
-```{r: Add historical air temperature data (NOAA)}
+```{r: Add air temperature data}
 ## Add headers for air temperature dataset
 #names(temp.air) <- c("station_id", "station_name", "lat_station", "long_station",
 #                     "elevation", "date", "mean_temp", "mean_attributes",
@@ -916,12 +917,12 @@ This was my first attempt at obtaining recent air temperature data (2003-2014). 
 #rm(temp.air, temp.air.group, temp.site.sp, temp.station, temp.station.sp, temp.nearest)
 ```
 
-### Step 7b: Add historical air temperature data (PRISM)
+### Step 7b: Add air temperature (PRISM) to historical dataset
 
 This reformats historical air temperature data (2003-2013) from PRISM (http://www.prism.oregonstate.edu/explorer/bulk.php). To acquire these data, I exported the coordinates and unique indentifiers for each waterbody (site_id) as "localities.csv". First, because the PRISM interface only works with 500 rows at a time,  I manually split "localities.csv" into separate csv files located at "data/raw/localities/localities_#.csv). The files that were returned from these queries are located at
 "data/raw/temp_air/2003_prism/PRISM_tmean_stable_4km_200301_201312_#.csv". Second, I manually merged these files into "data/raw/prism_1.csv" and "data/raw/prism_2.csv". This required two files because Excel doesn't enjoy files with >1,000,000 rows. I will eventually write some BASH code that does the manual steps above.
 
-```{r: Add historical air temperature data (PRISM)}
+```{r: Add air temperature data}
 # Subset sites from Winslow et al. (2017)
 sites <- subset(hist.water, select = c(site_id))
 
@@ -978,9 +979,7 @@ df.historical <- localities %>%
   mutate(id = as.character(id)) %>%
   full_join(hist.air, ., by = "id") %>%
   full_join(df.historical, ., by = c("site_id", "year", "month")) %>%
-  mutate(lat.x  = NULL,
-         long.x = NULL,
-         id     = NULL) %>%
+  dplyr::select(., -c("lat.x", "long.x", "id")) %>%
   rename(lat    = lat.y,
          long   = long.y) %>%
   dplyr::group_by(site_id) %>%
@@ -1014,15 +1013,15 @@ df.historical <- df.historical %>%
 # Remove unnecessary dataframes
 rm(hist.water, hist.air,
    hist.air.1, hist.air.2,
-   air.pr, air_pca)
+   air.pr, air_pca, sites)
 ```
 
-### Step 8: Add geographic and census data
+### Step 8: Add geographic, census, and ecoregion to historical dataset
 
-This adds geographic (county, state) and 2010 US census data to the historical dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I merged spatial covariates for each waterbody into the dataset. Third, I added 2010 census data from the US Census Bureau (https://www.census.gov/geo/maps-data/data/tiger-data.html).
+This adds geographic (county, state), 2010 US census, and ecoregion data to the historical dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody locatlities to determine which ecoregion polygon they were in. Lastly, I associated each waterbody with a single set of geographic coordinates because there are numerous "site_id" identifiers for a single waterbody.
 
-```{r: Add geographic and census data}
-# Isolate coordinates to determine county and state of each waterbody
+```{r: Add geographic, census, and ecoregion data}
+# Subset coordinates to find county, state of each waterbody
 coordinates <- subset(df.historical, select = c("long", "lat"))
 
 # The single argument to this function, pointsDF, is a dataframe in which:
@@ -1035,11 +1034,11 @@ latlong2county <- function(pointsDF) {
     counties <- map('county', fill = TRUE, col = "transparent", plot = FALSE)
     IDs <- sapply(strsplit(counties$names, ":"), function(x) x[1])
     counties_sp <- map2SpatialPolygons(counties, IDs = IDs,
-                     proj4string = CRS("+proj=longlat +datum=WGS84"))
+                     proj4string = CRS("+proj=longlat +datum=NAD83"))
 
     # Convert pointsDF to a SpatialPoints object 
     pointsSP <- SpatialPoints(pointsDF, 
-                    proj4string = CRS("+proj=longlat +datum=WGS84"))
+                    proj4string = CRS("+proj=longlat +datum=NAD83"))
 
     # Use 'over' to get _indices_ of the Polygons object containing each point 
     indices <- over(pointsSP, counties_sp)
@@ -1049,26 +1048,79 @@ latlong2county <- function(pointsDF) {
     countyNames[indices]
 }
 
-# Finds county and state for each set of coordinates
-county.state <- latlong2county(coordinates)
-county.state <- as.vector(county.state)
+# Find county and state for each set of coordinates
+df.historical$state <- as.vector(latlong2county(coordinates))
 
-# Add counties and states
-df.historical$state <- county.state
+# Separate county and state columns
+df.historical[66:67] <- do.call('rbind', strsplit(as.character(df.historical$state), ','))
 
-# Remove unnecessary dataframes
-rm(coordinates, localities, sites, county.state)
-
-# Create county and state columns from date column
-df.historical[113:114] <- do.call('rbind', strsplit(as.character(df.historical$state), ','))
-
-# Rename and reformat year and month columns
+# Rename and reformat columns
 df.historical <- df.historical %>%
   rename(county  = V2) %>%
   mutate(state = ifelse(state == "minnesota", "mn", state),
-         state = ifelse(state == "wisconsin", "wi", state),
-         state = ifelse(state == "michigan",  "mi", state)) %>%
-    mutate_at(c(28:100), ~replace(., is.na(.), 0)) # replaces NAs with 0s for all species/family observations, temperature categories, and fishkill causes
+         state = ifelse(state == "wisconsin", "wi", state))
+
+# Remove "county" from county names in 2010 US census data
+census$county <- str_sub(census$county, end = -8)
+
+# Add census data
+df.historical <- census %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower) %>%
+  left_join(df.historical, ., by = c("county", "state")) %>%
+  mutate(pop_2010 = as.character(pop_2010)) %>%
+  mutate(pop_2010 = as.numeric(gsub(",","", pop_2010)),
+         county = NULL,
+         state = NULL)
+
+# Subset localities
+ecoregions.sp <- df.historical %>%
+  subset(., select = c("long", "lat"))
+
+# Create spatial points
+ecoregions.sp  <- SpatialPoints(ecoregions.sp)
+
+# Add projection system
+proj4string(ecoregions.sp) <- CRS("+proj=longlat +datum=NAD83")
+
+# Load ecoregions
+ecoregions.mn <- readOGR(dsn = path.expand("data/raw/ecoregions/mn_eco_l4"), layer = "mn_eco_l4")
+ecoregions.wi <- readOGR(dsn = path.expand("data/raw/ecoregions/wi_eco_l4"), layer = "wi_eco_l4")
+
+# Changes projection system
+ecoregions.mn <- spTransform(ecoregions.mn, CRS("+proj=longlat +datum=NAD83"))
+ecoregions.wi <- spTransform(ecoregions.wi, CRS("+proj=longlat +datum=NAD83"))
+
+# Determines the ecoregion of each locality
+ecoregions.mn <- over(ecoregions.sp, ecoregions.mn)
+ecoregions.wi <- over(ecoregions.sp, ecoregions.wi)
+
+# Create unique id
+ecoregions.mn$id <- seq(1, nrow(ecoregions.mn))
+ecoregions.wi$id <- seq(1, nrow(ecoregions.wi))
+
+# Remove NAs
+ecoregions.mn <- na.omit(ecoregions.mn)
+ecoregions.wi <- na.omit(ecoregions.wi)
+
+# Merge ecoregions across states
+ecoregions <- full_join(ecoregions.mn, ecoregions.wi) %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower) %>%
+  dplyr::select(us_l4code, us_l4name, state_name, id) %>%
+  rename(l4_code = us_l4code,
+         l4_name = us_l4name,
+         state = state_name) %>%
+  mutate(id = as.numeric(id))
+
+# Add unique identifier and ecoregions to historical dataframe
+df.historical <- df.historical %>%
+  mutate(id = as.numeric(seq(1, nrow(df.historical)))) %>%
+  left_join(., ecoregions, by = c("id")) %>%
+  subset(., !is.na(state)) %>%
+  mutate(gnis_nm = NULL,
+         l3_code = substr(test$l4_code, 1, 2)) %>%
+  mutate_at(c(26:53), ~replace(., is.na(.), 0))
 
 # Load spatial data
 spatial <- readOGR(dsn = path.expand("data/raw/lake_shapes"), layer = "model_lakes")
@@ -1094,54 +1146,21 @@ df.historical <- df.historical %>%
   rename(long = long.y, # keeps new coordinates
          lat  = lat.y)
 
-## Add 2010 census data (Till method)
-#census <- readOGR(dsn = path.expand("data/raw/census_data"), layer = "tabblock2010_55_pophu")
-#census.df <- coordinates(census) %>%
-#  as.data.frame() %>%
-#  add_column(population = census@data$POP10) %>%
-#  rename(lat = V2,
-#         long = V1) %>%
-#  mutate(long_round = round(long, 1),
-#         lat_round = round(lat, 1)) %>%
-#  group_by(long_round, lat_round) %>%
-#  summarize(population = sum(population)) %>%
-#  dplyr::select(long_round, lat_round, population)
-
-## Join population data by matching to the nearest GPS coordinates
-#df.historical <- df.historical %>%
-#  mutate(long_round = round(long, 1),
-#         lat_round =  round(lat, 1)) %>%
-#  left_join(census.df, by = c("long_round", "lat_round")) %>%
-#  dplyr::select(-long_round, -lat_round)
-
-# Remove "county" from county names in census data
-census$county <- str_sub(census$county, end = -8)
-
-# Reformat census data
-census <- census %>%
-  rename_all(tolower) %>%
-  mutate_all(tolower)
-
-# Merge census data with historical df
-df.historical <- df.historical %>%
-  left_join(census, by = c("county", "state")) %>%
-  mutate(pop_2010 = as.character(pop_2010))
-
-# Remove commas from population estimates
-df.historical$pop_2010 <- as.numeric(gsub(",","",df.historical$pop_2010))
-
 # Save historical dataframe
 write.csv(df.historical, "data/processed/df_historical.csv", row.names = FALSE)
 
 # Remove unnecessary dataframes
-rm(spatial, fish, df.historical)
+rm(fish, df.historical,
+   ecoregions, ecoregions.sp,
+   ecoregions.mn, ecoregions.wi,
+   coordinates, localities, spatial)
 ```
 
-### Step 9: Add future water temperature data
+### Step 9: Add water temperature to future dataset
 
 This reformats future water temperature estimates (2041-2059; 2081-2099) via the same methodology used to create the concurrent water temperature dataset. First, this processes annual and monthly data separately for computational efficiency. Second, this averages annual and monthly data across waterbodies with multiple site_ids. Third, z-scores are calculated for the mean and maximum surface and bottom water temperatures. Fourth, the first PC for maximum surface, mean surface, and maximum bottom temperatures is added as a separate column. These temperature estimates are from Winslow et al. (2017), which used six models (ACCESS, CNRM, GFDL, IPSL, MIROC5, MRIS) from the Coupled Model Intercomparison Project Phase 5 (CMIP5) and were based on RCP 8.5 projections.
 
-```{r: Add future water temperature data}
+```{r: Add future water temperature}
 # Load future water temperature data
 future.water <- read_tsv("data/raw/ACCESS_thermal_metrics.tsv") %>%
   inner_join(site.id, by = "site_id")
@@ -1257,15 +1276,14 @@ df.future <- future.water.monthly %>%
 
 # Remove unneccesary dataframes
 rm(water.pr, water_pca, future.water,
-   future.water.annual, future.water.monthly,
-   census.df, spatial.df)
+   future.water.annual, future.water.monthly)
 ```
 
-### Step 10: Add future air temperature data
+### Step 10: Add air temperature (NOAA) to future dataset
 
 This prepares future air temperature estimates (2041-2059; 2081-2099) from the NOAA GFDL CM3 model (https://gdo-dcp.ucllnl.org/downscaled_cmip_projections/dcpInterface.html). This is one of the models used in Winslow et al., (2017) and contains estimates for each 1/8 degree (~8 km resolution) under RCP 8.5 projections. These datasets include minimum, mean, and maximum air temperature estimates, as well as precipitation estimates for each location. Each of these variables are in a separate file for the two timespans (2041-2059; 2081-2099). First, each file is converted into a workable dataframe and then merged into a single dataframe. Second, because each file contains unique values for the localities and time (e.g., 1, 2, ... n) instead of the actual localiities and time (e.g., lat, long, month, year), I created sequences based on the metadata to acquire the actual localities and time. Third, this merges the future air and water temperature estimates.
 
-```{r: Add future air temperature data}
+```{r: Add air temperature}
 # Open netCDF files
 air.tas.2041    <- nc_open(filename = "data/raw/temp_air/2041_gfdl_cm3/bcsd5/Extraction_tas.nc", write = TRUE, readunlim = FALSE, verbose = TRUE)
 air.tasmax.2041 <- nc_open(filename = "data/raw/temp_air/2041_gfdl_cm3/bcsd5/Extraction_tasmax.nc", write = TRUE, readunlim = FALSE, verbose = TRUE)
@@ -1670,47 +1688,108 @@ df.future <- df.future %>%
 rm(future.air, site.sp,
    localities, localities.sp,
    air.nearest, air.pr, air_pca)
+```
 
-# Isolate coordinates to determine county and state of each waterbody
+### Step 11: Add geographic, census, and ecoregion to future dataset
+This adds geographic (county, state), 2010 US census, and ecoregion data to the historical dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody locatlities to determine which ecoregion polygon they were in. into the dataset. Lastly, I associated each waterbody with a single set of geographic coordinates because there are numerous "site_id" identifiers for a single waterbody.
+
+This adds geographic (county, state), 2010 US census, and ecoregion data to the future dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody locatlities to determine which ecoregion polygon they were in. Lastly, I associated each waterbody with a single set of geographic coordinates because there are numerous "site_id" identifiers for a single waterbody.
+
+```{r: Add spatial data}
+# Subset coordinates to find county, state of each waterbody
 coordinates <- subset(df.future, select = c("long", "lat"))
 
-# Finds county and state for each set of coordinates
-county.state <- latlong2county(coordinates)
+# Find county and state for each set of coordinates
+df.future$state <- as.vector(latlong2county(coordinates))
 
-# Add counties and states
-df.future$state <- as.vector(county.state)
-
-# Remove unnecessary dataframes
-rm(coordinates, county.state)
-
-# Create county and state columns from date column
+# Separate county and state columns
 df.future[38:39] <- do.call('rbind', strsplit(as.character(df.future$state), ','))
 
-# Rename and reformat year and month columns
+# Rename and reformat columns
 df.future <- df.future %>%
   rename(county  = V2) %>%
   mutate(state = ifelse(state == "minnesota", "mn", state),
-         state = ifelse(state == "wisconsin", "wi", state),
-         state = ifelse(state == "michigan",  "mi", state))
+         state = ifelse(state == "wisconsin", "wi", state))
 
-# Merge census data with historical df
+# Add census data
+df.future <- census %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower) %>%
+  left_join(df.future, ., by = c("county", "state")) %>%
+  mutate(pop_2010 = as.character(pop_2010)) %>%
+  mutate(pop_2010 = as.numeric(gsub(",","", pop_2010)),
+         county = NULL,
+         state = NULL)
+
+# Subset localities
+ecoregions.sp <- df.future %>%
+  subset(., select = c("long", "lat"))
+
+# Create spatial points
+ecoregions.sp  <- SpatialPoints(ecoregions.sp)
+
+# Add projection system
+proj4string(ecoregions.sp) <- CRS("+proj=longlat +datum=NAD83")
+
+# Load ecoregions
+ecoregions.mn <- readOGR(dsn = path.expand("data/raw/ecoregions/mn_eco_l4"), layer = "mn_eco_l4")
+ecoregions.wi <- readOGR(dsn = path.expand("data/raw/ecoregions/wi_eco_l4"), layer = "wi_eco_l4")
+
+# Changes projection system
+ecoregions.mn <- spTransform(ecoregions.mn, CRS("+proj=longlat +datum=NAD83"))
+ecoregions.wi <- spTransform(ecoregions.wi, CRS("+proj=longlat +datum=NAD83"))
+
+# Determines the ecoregion of each locality
+ecoregions.mn <- over(ecoregions.sp, ecoregions.mn)
+ecoregions.wi <- over(ecoregions.sp, ecoregions.wi)
+
+# Create unique id
+ecoregions.mn$id <- seq(1, nrow(ecoregions.mn))
+ecoregions.wi$id <- seq(1, nrow(ecoregions.wi))
+
+# Remove NAs
+ecoregions.mn <- na.omit(ecoregions.mn)
+ecoregions.wi <- na.omit(ecoregions.wi)
+
+# Merge ecoregions across states
+ecoregions <- full_join(ecoregions.mn, ecoregions.wi) %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower) %>%
+  dplyr::select(us_l4code, us_l4name, state_name, id) %>%
+  rename(l4_code = us_l4code,
+         l4_name = us_l4name,
+         state = state_name) %>%
+  mutate(id = as.numeric(id))
+
+# Add unique identifier and ecoregions to historical dataframe
 df.future <- df.future %>%
-  left_join(census, by = c("county", "state")) %>%
-  mutate(pop_2010 = as.character(pop_2010))
+  mutate(id = as.numeric(seq(1, nrow(df.future)))) %>%
+  left_join(., ecoregions, by = c("id")) %>%
+  subset(., !is.na(state)) %>%
+  mutate(site = NULL,
+         l3_code = substr(test$l4_code, 1, 2))
 
-# Remove commas from population estimates
-df.future$pop_2010 <- as.numeric(gsub(",","",df.future$pop_2010))
+# Merge spatial data
+df.future <- df.future %>%
+  inner_join(spatial.df, by = "site_id") %>%
+  mutate(long.x = NULL, # removes old coordinates
+         lat.x  = NULL) %>%
+  rename(long = long.y, # keeps new coordinates
+         lat  = lat.y)
 
-# Save processed data
-write_csv(df.future, "data/processed/df_future.csv")
+# Save historical dataframe
+write.csv(df.future, "data/processed/df_future.csv", row.names = FALSE)
 
-# Remove unneccessary dataframes
-rm(df.future, site.id, census, latlong2county)
+# Remove unnecessary dataframes
+rm(ecoregions, ecoregions.sp,
+   ecoregions.mn, ecoregions.wi,
+   census, coordinates, site.id,
+   spatial.df, df.future)
 ```
 
 ### Step 11: Add snowfall data
 
-This creates a snowfall dataset for the entire geographic range of the Winslow et al. (2017) dataset, which encompasses WI, MN, and MI. After performing this step, the historical (2003-2014) and future (2041-2059; 2081-2099) datasets are fully processed and ready for modeling.
+This creates a snowfall dataset for the entire geographic range of the Winslow et al. (2017) dataset, which encompasses WI, MN, and MI. After performing this step, the historical (2003-2014) and future (2041-2059; 2081-2099) datasets are ready for modeling.
 
 ```{r: Add snowfall data}
 # Create snowfall function
