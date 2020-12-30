@@ -81,7 +81,7 @@ census       <- read.csv(file = "data/raw/2010_census.csv", head = TRUE, sep = "
 
 This reformats the MN fishkill dataset. First, this combines fishkills that occurred in the same waterbody and month into a single event. I manually verified each of these events so that all affected taxa were accounted for and the most frequent cause was considered the cause of the combined event. All affected taxa are organized by family and, if possible, species. Second, this associates each fishkill with the nearest waterbody centroid using the unique identifier "site_id". Till et al., (2019) used "WBIC" as the unique identifier, however this idenfitier is state-specific to Wisconsin and "site_id", from the National Hydrologic Database (NHD), can be used across both states. Third, this calculates the species and family richness for each fishkill event.
 
-```{r: Load Minnesota fishkill data}
+```{r: Add Minnesota fishkill data}
 # Merges waterbody information, reformats columns, and removes locations without coordinates
 site.id <- site.id %>%
   left_join(., wi.site, by = "site_id", all = TRUE) %>%
@@ -342,7 +342,7 @@ rm(mn.fish.1, mn.fish.2,
 
 This reformats the WI fishkill dataset. First, this combines fishkills that occurred in the same waterbody and month into a single event as above. All taxa are organized by family and, if possible, species. Second, this associates each fishkill event with the centroid of the nearest waterbody as above. Note that a truncated version of "site_id" is already in the original WI fishkill dataset, but I re-add the full version for consistency with the MN data. Third, this calculates the species and family richness for each fishkill event.
 
-```{r: Load Wisconsin fishkill data}
+```{r: Add Wisconsin fishkill data}
 # Removes fishkill events outside of the study period, renames columns, and expands final diagnoses for fishkills into separate columns
 wi.fish <- wi.fish %>%
   mutate(date = as.Date(wi.fish$Investigation.Start.Date, "%d-%b-%Y"),
@@ -556,7 +556,7 @@ rm(mn.fish, wi.fish)
 
 This creates a preliminary map of fishkill events across Minnesota and Wisconsin to visually verify the waterbody centroid method used above. Specifically, it creates one map with the fishkill event localities and another map with the fishkill event and waterbody localities across both states.
 
-```{r: Preliminary map of fishkill observations}
+```{r: Preliminary map of fishkills}
 # Subsets data for a map
 fish.map <- fish %>%
   subset(., select = c(lat, long, year, state, event)) %>%
@@ -1021,57 +1021,98 @@ rm(hist.water, hist.air,
 This adds geographic (county, state), 2010 US census, and ecoregion data to the historical dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody locatlities to determine which ecoregion polygon they were in. Lastly, I associated each waterbody with a single set of geographic coordinates because there are numerous "site_id" identifiers for a single waterbody.
 
 ```{r: Add geographic, census, and ecoregion data}
-# Subset coordinates to find county, state of each waterbody
-coordinates <- subset(df.historical, select = c("long", "lat"))
+# Set working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/raw")
 
-# The single argument to this function, pointsDF, is a dataframe in which:
-#   - column 1 contains the longitude in degrees
-#   - column 2 contains the latitude in degrees
+# Load census data
+census.wi <- readOGR(dsn = path.expand("census_data"), layer = 'tabblock2010_55_pophu')
+census.mn <- readOGR(dsn = path.expand("census_data"), layer = 'tabblock2010_27_pophu')
 
-latlong2county <- function(pointsDF) {
-    # Prepare SpatialPolygons object with one SpatialPolygon
-    # per county
-    counties <- map('county', fill = TRUE, col = "transparent", plot = FALSE)
-    IDs <- sapply(strsplit(counties$names, ":"), function(x) x[1])
-    counties_sp <- map2SpatialPolygons(counties, IDs = IDs,
-                     proj4string = CRS("+proj=longlat +datum=NAD83"))
+# Reformat WI census data
+census.wi <- coordinates(census.wi) %>%
+  as.data.frame() %>%
+  add_column(population = census.wi@data$POP10) %>%
+  rename(lat  = V2,
+         long = V1) %>%
+  mutate(long_round = round(long, 1),
+         lat_round  = round(lat, 1)) %>%
+  group_by(long_round, lat_round) %>%
+  summarize(population = sum(population)) %>%
+  dplyr::select(long_round, lat_round, population)
 
-    # Convert pointsDF to a SpatialPoints object 
-    pointsSP <- SpatialPoints(pointsDF, 
-                    proj4string = CRS("+proj=longlat +datum=NAD83"))
+# Reformat MN census data
+census.mn <- coordinates(census.mn) %>%
+  as.data.frame() %>%
+  add_column(population = census.mn@data$POP10) %>%
+  rename(lat  = V2,
+         long = V1) %>%
+  mutate(long_round = round(long, 1),
+         lat_round  = round(lat, 1)) %>%
+  group_by(long_round, lat_round) %>%
+  summarize(population = sum(population)) %>%
+  dplyr::select(long_round, lat_round, population)
 
-    # Use 'over' to get _indices_ of the Polygons object containing each point 
-    indices <- over(pointsSP, counties_sp)
-
-    # Return the county names of the Polygons object containing each point
-    countyNames <- sapply(counties_sp@polygons, function(x) x@ID)
-    countyNames[indices]
-}
-
-# Find county and state for each set of coordinates
-df.historical$state <- as.vector(latlong2county(coordinates))
-
-# Separate county and state columns
-df.historical[66:67] <- do.call('rbind', strsplit(as.character(df.historical$state), ','))
-
-# Rename and reformat columns
-df.historical <- df.historical %>%
-  rename(county  = V2) %>%
-  mutate(state = ifelse(state == "minnesota", "mn", state),
-         state = ifelse(state == "wisconsin", "wi", state))
-
-# Remove "county" from county names in 2010 US census data
-census$county <- str_sub(census$county, end = -8)
+# Join census data across states
+df.census <- full_join(census.wi, census.mn)
 
 # Add census data
-df.historical <- census %>%
-  rename_all(tolower) %>%
-  mutate_all(tolower) %>%
-  left_join(df.historical, ., by = c("county", "state")) %>%
-  mutate(pop_2010 = as.character(pop_2010)) %>%
-  mutate(pop_2010 = as.numeric(gsub(",","", pop_2010)),
-         county = NULL,
-         state = NULL)
+df.historical <- df.historical %>%
+  mutate(long_round = round(long, 1),
+         lat_round = round(lat, 1)) %>%
+  left_join(df.census, by = c("long_round", "lat_round")) %>%
+  dplyr::select(-long_round, -lat_round)
+
+### Subset coordinates to find county, state of each waterbody
+##coordinates <- subset(df.historical, select = c("long", "lat"))
+##
+### The single argument to this function, pointsDF, is a dataframe in which:
+###   - column 1 contains the longitude in degrees
+###   - column 2 contains the latitude in degrees
+##
+##latlong2county <- function(pointsDF) {
+##    # Prepare SpatialPolygons object with one SpatialPolygon
+##    # per county
+##    counties <- map('county', fill = TRUE, col = "transparent", plot = FALSE)
+##    IDs <- sapply(strsplit(counties$names, ":"), function(x) x[1])
+##    counties_sp <- map2SpatialPolygons(counties, IDs = IDs,
+##                     proj4string = CRS("+proj=longlat +datum=NAD83"))
+##
+##    # Convert pointsDF to a SpatialPoints object 
+##    pointsSP <- SpatialPoints(pointsDF, 
+##                    proj4string = CRS("+proj=longlat +datum=NAD83"))
+##
+##    # Use 'over' to get _indices_ of the Polygons object containing each point 
+##    indices <- over(pointsSP, counties_sp)
+##
+##    # Return the county names of the Polygons object containing each point
+##    countyNames <- sapply(counties_sp@polygons, function(x) x@ID)
+##    countyNames[indices]
+##}
+##
+### Find county and state for each set of coordinates
+##df.historical$state <- as.vector(latlong2county(coordinates))
+##
+### Separate county and state columns
+##df.historical[66:67] <- do.call('rbind', strsplit(as.character(df.historical$state), ','))
+##
+### Rename and reformat columns
+##df.historical <- df.historical %>%
+##  rename(county  = V2) %>%
+##  mutate(state = ifelse(state == "minnesota", "mn", state),
+##         state = ifelse(state == "wisconsin", "wi", state))
+##
+### Remove "county" from county names in 2010 US census data
+##census$county <- str_sub(census$county, end = -8)
+##
+### Add census data
+##df.historical <- census %>%
+##  rename_all(tolower) %>%
+##  mutate_all(tolower) %>%
+##  left_join(df.historical, ., by = c("county", "state")) %>%
+##  mutate(pop_2010 = as.character(pop_2010)) %>%
+##  mutate(pop_2010 = as.numeric(gsub(",","", pop_2010)),
+##         county = NULL,
+##         state = NULL)
 
 # Subset localities
 ecoregions.sp <- df.historical %>%
@@ -1082,6 +1123,9 @@ ecoregions.sp  <- SpatialPoints(ecoregions.sp)
 
 # Add projection system
 proj4string(ecoregions.sp) <- CRS("+proj=longlat +datum=NAD83")
+
+# Set working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/")
 
 # Load ecoregions
 ecoregions.mn <- readOGR(dsn = path.expand("data/raw/ecoregions/mn_eco_l4"), layer = "mn_eco_l4")
@@ -1118,13 +1162,14 @@ df.historical <- df.historical %>%
   mutate(id = as.numeric(seq(1, nrow(df.historical)))) %>%
   left_join(., ecoregions, by = c("id")) %>%
   subset(., !is.na(state)) %>%
-  mutate(gnis_nm = NULL,
-         l3_code = substr(test$l4_code, 1, 2)) %>%
-  mutate_at(c(26:53), ~replace(., is.na(.), 0))
+  mutate(l3_code = substr(.$l4_code, 1, 2)) %>%
+  mutate_at(c(27:53), ~replace(., is.na(.), 0))
 
 # Load spatial data
 spatial <- readOGR(dsn = path.expand("data/raw/lake_shapes"), layer = "model_lakes")
-spatial.df <- coordinates(spatial) %>%
+
+# Extract spatial variables
+df.spatial <- coordinates(spatial) %>%
   as.data.frame() %>%
   add_column(site_id = as.character(spatial@data$site_id)) %>%
   inner_join(site.id, by = "site_id") %>%
@@ -1133,18 +1178,19 @@ spatial.df <- coordinates(spatial) %>%
   dplyr::select(lat, long, site_id)
 
 # Represent each waterbody by a single GPS coordinate
-spatial.df <- spatial.df %>%
+df.spatial <- df.spatial %>%
   group_by(site_id) %>%
   summarize(long = mean(long),
             lat  = mean(lat))
 
 # Merge spatial data
 df.historical <- df.historical %>%
-  inner_join(spatial.df, by = "site_id") %>%
+  inner_join(df.spatial, by = "site_id") %>%
   mutate(long.x = NULL, # removes old coordinates
-         lat.x  = NULL) %>%
-  rename(long = long.y, # keeps new coordinates
-         lat  = lat.y)
+         lat.x  = NULL,
+         id     = NULL) %>%
+  rename(long   = long.y, # keeps new coordinates
+         lat    = lat.y)
 
 # Save historical dataframe
 write.csv(df.historical, "data/processed/df_historical.csv", row.names = FALSE)
@@ -1153,14 +1199,14 @@ write.csv(df.historical, "data/processed/df_historical.csv", row.names = FALSE)
 rm(fish, df.historical,
    ecoregions, ecoregions.sp,
    ecoregions.mn, ecoregions.wi,
-   coordinates, localities, spatial)
+   localities, spatial)
 ```
 
 ### Step 9: Add water temperature to future dataset
 
 This reformats future water temperature estimates (2041-2059; 2081-2099) via the same methodology used to create the concurrent water temperature dataset. First, this processes annual and monthly data separately for computational efficiency. Second, this averages annual and monthly data across waterbodies with multiple site_ids. Third, z-scores are calculated for the mean and maximum surface and bottom water temperatures. Fourth, the first PC for maximum surface, mean surface, and maximum bottom temperatures is added as a separate column. These temperature estimates are from Winslow et al. (2017), which used six models (ACCESS, CNRM, GFDL, IPSL, MIROC5, MRIS) from the Coupled Model Intercomparison Project Phase 5 (CMIP5) and were based on RCP 8.5 projections.
 
-```{r: Add future water temperature}
+```{r: Add water temperature}
 # Load future water temperature data
 future.water <- read_tsv("data/raw/ACCESS_thermal_metrics.tsv") %>%
   inner_join(site.id, by = "site_id")
@@ -1272,7 +1318,7 @@ future.water.monthly <- future.water.monthly %>%
 df.future <- future.water.monthly %>%
   left_join(future.water.annual, by = c("year", "site_id")) %>%
   dplyr::select(-lat, -long) %>%
-  left_join(spatial.df, by = "site_id")
+  left_join(df.spatial, by = "site_id")
 
 # Remove unneccesary dataframes
 rm(water.pr, water_pca, future.water,
@@ -1696,30 +1742,71 @@ This adds geographic (county, state), 2010 US census, and ecoregion data to the 
 This adds geographic (county, state), 2010 US census, and ecoregion data to the future dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody locatlities to determine which ecoregion polygon they were in. Lastly, I associated each waterbody with a single set of geographic coordinates because there are numerous "site_id" identifiers for a single waterbody.
 
 ```{r: Add spatial data}
-# Subset coordinates to find county, state of each waterbody
-coordinates <- subset(df.future, select = c("long", "lat"))
+# Set working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/raw")
 
-# Find county and state for each set of coordinates
-df.future$state <- as.vector(latlong2county(coordinates))
+# Load census data
+census.wi <- readOGR(dsn = path.expand("census_data"), layer = 'tabblock2010_55_pophu')
+census.mn <- readOGR(dsn = path.expand("census_data"), layer = 'tabblock2010_27_pophu')
 
-# Separate county and state columns
-df.future[38:39] <- do.call('rbind', strsplit(as.character(df.future$state), ','))
+# Reformat WI census data
+census.wi <- coordinates(census.wi) %>%
+  as.data.frame() %>%
+  add_column(population = census.wi@data$POP10) %>%
+  rename(lat  = V2,
+         long = V1) %>%
+  mutate(long_round = round(long, 1),
+         lat_round  = round(lat, 1)) %>%
+  group_by(long_round, lat_round) %>%
+  summarize(population = sum(population)) %>%
+  dplyr::select(long_round, lat_round, population)
 
-# Rename and reformat columns
-df.future <- df.future %>%
-  rename(county  = V2) %>%
-  mutate(state = ifelse(state == "minnesota", "mn", state),
-         state = ifelse(state == "wisconsin", "wi", state))
+# Reformat MN census data
+census.mn <- coordinates(census.mn) %>%
+  as.data.frame() %>%
+  add_column(population = census.mn@data$POP10) %>%
+  rename(lat  = V2,
+         long = V1) %>%
+  mutate(long_round = round(long, 1),
+         lat_round  = round(lat, 1)) %>%
+  group_by(long_round, lat_round) %>%
+  summarize(population = sum(population)) %>%
+  dplyr::select(long_round, lat_round, population)
+
+# Join census data across states
+df.census <- full_join(census.wi, census.mn)
 
 # Add census data
-df.future <- census %>%
-  rename_all(tolower) %>%
-  mutate_all(tolower) %>%
-  left_join(df.future, ., by = c("county", "state")) %>%
-  mutate(pop_2010 = as.character(pop_2010)) %>%
-  mutate(pop_2010 = as.numeric(gsub(",","", pop_2010)),
-         county = NULL,
-         state = NULL)
+df.historical <- df.historical %>%
+  mutate(long_round = round(long, 1),
+         lat_round = round(lat, 1)) %>%
+  left_join(df.census, by = c("long_round", "lat_round")) %>%
+  dplyr::select(-long_round, -lat_round)
+
+## Subset coordinates to find county, state of each waterbody
+#coordinates <- subset(df.future, select = c("long", "lat"))
+#
+## Find county and state for each set of coordinates
+#df.future$state <- as.vector(latlong2county(coordinates))
+#
+## Separate county and state columns
+#df.future[38:39] <- do.call('rbind', strsplit(as.character(df.future$state), ','))
+#
+## Rename and reformat columns
+#df.future <- df.future %>%
+#  rename(county  = V2) %>%
+#  mutate(state = ifelse(state == "minnesota", "mn", state),
+#         state = ifelse(state == "wisconsin", "wi", state))
+#
+## Add census data
+#df.future <- census %>%
+#  rename_all(tolower) %>%
+#  mutate_all(tolower) %>%
+#  left_join(df.future, ., by = c("county", "state")) %>%
+#  mutate(pop_2010 = as.character(pop_2010)) %>%
+#  mutate(pop_2010 = as.numeric(gsub(",","", pop_2010)),
+#         county = NULL,
+#         state = NULL)
 
 # Subset localities
 ecoregions.sp <- df.future %>%
@@ -1730,6 +1817,9 @@ ecoregions.sp  <- SpatialPoints(ecoregions.sp)
 
 # Add projection system
 proj4string(ecoregions.sp) <- CRS("+proj=longlat +datum=NAD83")
+
+# Set working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/")
 
 # Load ecoregions
 ecoregions.mn <- readOGR(dsn = path.expand("data/raw/ecoregions/mn_eco_l4"), layer = "mn_eco_l4")
@@ -1767,13 +1857,14 @@ df.future <- df.future %>%
   left_join(., ecoregions, by = c("id")) %>%
   subset(., !is.na(state)) %>%
   mutate(site = NULL,
-         l3_code = substr(test$l4_code, 1, 2))
+         l3_code = substr(.$l4_code, 1, 2))
 
 # Merge spatial data
 df.future <- df.future %>%
-  inner_join(spatial.df, by = "site_id") %>%
+  inner_join(df.spatial, by = "site_id") %>%
   mutate(long.x = NULL, # removes old coordinates
-         lat.x  = NULL) %>%
+         lat.x  = NULL,
+         id     = NULL) %>%
   rename(long = long.y, # keeps new coordinates
          lat  = lat.y)
 
@@ -1783,8 +1874,8 @@ write.csv(df.future, "data/processed/df_future.csv", row.names = FALSE)
 # Remove unnecessary dataframes
 rm(ecoregions, ecoregions.sp,
    ecoregions.mn, ecoregions.wi,
-   census, coordinates, site.id,
-   spatial.df, df.future)
+   census, site.id,
+   df.spatial, df.future)
 ```
 
 ### Step 11: Add snowfall data
@@ -1795,7 +1886,7 @@ This creates a snowfall dataset for the entire geographic range of the Winslow e
 # Create snowfall function
 tidy_snow <- function(path) {
   
-  e <- extent(-96.8, -83.0, 41.7 , 48.8) # changed to include the max/min lat/long values from Winslow et al. (2017)
+  e <- extent(-96.8, -83.0, 41.7 , 48.8) # changed to cover the full spatial extent of Winslow et al. (2017)
   a <- crop(raster(path),e)
   
   a1 <- as.data.frame(coordinates(a))
