@@ -67,31 +67,84 @@ testing <- testing %>%
 The first generalized model uses a subset of variables selected based on their presumed effect and not being mutually non-correlated (at least strongly). Throughout the remaining code, models that are based on air or water temperature begin with "a" or "w", respectively.
 
 ```{r: First generalized model}
-# First generalized model for water temperature
-w1 <- summerkill ~ long + lat + season + pop_2010 +
+# Simple generalized model for water temperature (ecoregion)
+w1e <- summerkill ~ long + lat + season + pop_2010 +
   variance_after_ice_30 + variance_after_ice_60 +
-  log_schmidt + cumulative_above_10 + ice_duration + water_pca
+  log_schmidt + cumulative_above_10 + ice_duration +
+  water_pca + l3_code
 
-# First generalized model for air temperature
-a1 <- summerkill ~ long + lat + season + pop_2010 + air_pca
+# Simple generalized model for air temperature (ecoregion)
+a1e <- summerkill ~ long + lat + season + pop_2010 +
+  air_pca + l3_code
+
+# Simple generalized model for water temperature (state)
+w1s <- summerkill ~ long + lat + season + pop_2010 +
+  variance_after_ice_30 + variance_after_ice_60 +
+  log_schmidt + cumulative_above_10 + ice_duration +
+  water_pca + state
+
+# Simple generalized model for air temperature (state)
+a1s <- summerkill ~ long + lat + season + pop_2010 +
+  air_pca + state
+
+# Simple generalized model for water temperature (state and ecoregion)
+w1se <- summerkill ~ long + lat + season + pop_2010 +
+  variance_after_ice_30 + variance_after_ice_60 +
+  log_schmidt + cumulative_above_10 + ice_duration +
+  water_pca + state + l3_code
+
+# Simple generalized model for air temperature (state and ecoregion)
+a1se <- summerkill ~ long + lat + season + pop_2010 +
+  air_pca + state + l3_code
 ```
 
 The second model involves all covariates except site_id, which we treat separately because of the number of levels.
 
 ```{r: Second generalized model}
-# Second generalized model for water temperature (removed population for now because of NAs, otherwise same as Till)
-w2 <- summerkill ~ long + lat + season + ice_duration +
+# Complex generalized model for water temperature (ecoregion)
+w2e <- summerkill ~ long + lat + season + pop_2010 +
   variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-    cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
-    max_bot + max_surf + mean_bot + mean_surf +
-    max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
-    layer_diff + water_quad_temp + peak_temp
+  cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
+  max_bot + max_surf + mean_bot + mean_surf +
+  max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
+  ice_duration + layer_diff + water_quad_temp + peak_temp +
+  l3_code
 
-# Second generalized model for air temperature
-a2 <- summerkill ~ long + lat + season +
+# Complex generalized model for air temperature (ecoregion)
+a2e <- summerkill ~ long + lat + season +
   min_air + mean_air + max_air + 
   min_air_z + mean_air_z + max_air_z +
-  air_quad_temp
+  air_quad_temp + l3_code
+
+# Complex generalized model for water temperature (state)
+w2s <- summerkill ~ long + lat + season + pop_2010 +
+  variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
+  cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
+  max_bot + max_surf + mean_bot + mean_surf +
+  max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
+  ice_duration + layer_diff + water_quad_temp + peak_temp +
+  state
+
+# Complex generalized model for air temperature (state)
+a2s <- summerkill ~ long + lat + season +
+  min_air + mean_air + max_air + 
+  min_air_z + mean_air_z + max_air_z +
+  air_quad_temp + state
+
+# Complex generalized model for water temperature (state and ecoregion)
+w2se <- summerkill ~ long + lat + season + pop_2010 +
+  variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
+  cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
+  max_bot + max_surf + mean_bot + mean_surf +
+  max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
+  ice_duration + layer_diff + water_quad_temp + peak_temp +
+  state + l3_code
+
+# Complex generalized model for air temperature (state and ecoregion)
+a2se <- summerkill ~ long + lat + season +
+  min_air + mean_air + max_air + 
+  min_air_z + mean_air_z + max_air_z +
+  air_quad_temp + state + l3_code
 ```
 
 ### Step 3: Set up parameters for lambda selection for ridge and lasso regressions
@@ -123,24 +176,58 @@ First set of generalized models (w1 and a1)
 # Set seed
 set.seed(432)
 
+### Water
+
 # First generalized model for water temperature
-logistic_w1 <- glm(w1, training, family = "binomial")
+logistic_w1e <- glm(w1, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_w1 <- step(logistic_w1)
+logistic_w1e <- step(logistic_w1e)
+
+# First generalized model for water temperature
+logistic_w1s <- glm(w1, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_w1s <- step(logistic_w1s)
 
 # First generalized model for air temperature
-logistic_a1 <- glm(a1, training, family = "binomial")
+logistic_w1se <- glm(a1, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_a1 <- step(logistic_a1)
+logistic_w1se <- step(logistic_w1se)
+
+### Air
+
+# First generalized model for water temperature
+logistic_a1e <- glm(w1, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a1e <- step(logistic_a1e)
+
+# First generalized model for water temperature
+logistic_a1s <- glm(w1, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a1s <- step(logistic_a1s)
+
+# First generalized model for air temperature
+logistic_a1se <- glm(a1, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a1se <- step(logistic_a1se)
 
 # Save models
-write_rds(logistic_w1, "assessment/logistic_w1.rds")
-write_rds(logistic_a1, "assessment/logistic_a1.rds")
+write_rds(logistic_w1e,  "assessment/logistic_w1e.rds")
+write_rds(logistic_w1s,  "assessment/logistic_w1s.rds")
+write_rds(logistic_w1se, "assessment/logistic_w1se.rds")
+write_rds(logistic_a1e,  "assessment/logistic_a1e.rds")
+write_rds(logistic_a1s,  "assessment/logistic_a1s.rds")
+write_rds(logistic_a1se, "assessment/logistic_a1se.rds")
 
 # Remove models
-rm(logistic_w1, logistic_a1)
+rm(logistic_w1e.rds, logistic_w1s.rds,
+   logistic_w1se.rds, logistic_a1e.rds,
+   logistic_a1s.rds, logistic_a1se.rds)
 ```
 
 Second set of generalized model (w2 and a2)

@@ -13,6 +13,7 @@ This is a second pass at data processing to prepare data for model fitting.
 # Load packages
 library(tidyverse)
 library(caret)
+library(dplyr)
 
 # Reset global environment
 rm(list = ls())
@@ -22,6 +23,43 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/p
 
 # Load historical data
 df.historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
+df.future <- read.csv(file = "df_future.csv", head = TRUE, sep = ",")
+
+# Headers
+head(df.historical)
+head(df.future)
+```
+
+```{r: Load packages and data}
+# Plot rough comparison
+# Create theme
+pretty <- theme_classic(base_size = 12) +
+  theme(axis.title.y      = element_text(margin = margin(r = 20)),
+        axis.title.x      = element_text(margin = margin(t = 20)), 
+        axis.text         = element_text(color = "black"), 
+        axis.ticks        = element_line(color = "black"),
+        axis.ticks.length = unit(.25, "cm"), 
+        legend.key.size   = unit(1.5,  'lines'),
+        legend.position   = "right")
+
+mn <- subset(df.historical, state == "minnesota")
+wi <- subset(df.historical, state == "wisconsin")
+
+no  <- subset(df.historical, summerkill == "0")
+yes <- subset(df.historical, summerkill == "1")
+
+# Plot rough comparison
+ggplot() +
+  geom_point(no, mapping = aes(x = max_surf, y = max_air), size = 0.05, color = "lightblue") +
+  geom_point(yes,  mapping = aes(x = max_surf, y = max_air), size = 3, color = "darkred") +
+  labs(y = "Max air temp", x = "Max water temp") +
+  pretty
+#ggsave("mme_water_do.pdf")```
+
+###############################################################
+### Water quality parameters
+###############################################################
+
 ```
 
 ### Step 2: Partition and scale data
@@ -37,16 +75,18 @@ df.historical <- df.historical %>%
          season       = as.character(season),
          summerkill   = as.character(summerkill),
          ice_duration = as.double(ice_duration),
-         pop_2010     = as.numeric(pop_2010)) %>%
+         population   = as.numeric(population),
+         state        = as.character(state),
+         l3_code      = as.character(l3_code) %>%
   dplyr::select(., -c("anthropogenic", "infectious", "unknown", "winterkill",
                       "event", "gnis_nm")) %>%
   mutate(summerkill = fct_recode(summerkill,
                                  "neg" = "0",
                                  "pos" = "1"))
 
-# Remove remaining NAs
-df.historical <- na.omit(df.historical)
-
+#plot(df.historical$min_air, df.historical$year)
+#plot(df.historical$mean_surf, df.historical$year)
+#?poly
 # Set seed
 set.seed(666)
 
@@ -63,9 +103,13 @@ testing  <- df.historical %>%
 
 # Scale data
 pre.proc.values <- preProcess(training, method = c("center", "scale"))
+
+# Create training set
 training <- predict(pre.proc.values, training) %>%
   mutate(year = as.integer(year))
-testing  <- predict(pre.proc.values, testing) %>%
+
+# Create testing set
+testing <- predict(pre.proc.values, testing) %>%
   mutate(summerkill = factor(testing$summerkill, 
                              levels = c("pos", "neg"), 
                              ordered = TRUE),

@@ -998,13 +998,17 @@ df.historical <- df.historical %>%
 
 # Perform PCA to collapse collinear covariates into a single variable (air_pca). For this, I used mean and max air temperature (excluded min air temp) so it matched the PCA of mean and max water temperature
 air.pr <- df.historical %>%
-  dplyr::select(mean_air, max_air) %>%
+  dplyr::select(max_air, mean_air, min_air) %>%
   prcomp(center = TRUE, scale = TRUE)
 
 # Add PCA results into monthly air temperature data
 air_pca <- df.historical %>%
-  dplyr::select(mean_air, max_air) %>%
+  dplyr::select(max_air, mean_air, min_air) %>%
   as.matrix() %*% air.pr$rotation[,1]
+
+####################################################################################
+### Correlation matrix for min, mean, max air
+####################################################################################
 
 # Add PCA results into monthly water temperature data
 df.historical <- df.historical %>%
@@ -1060,59 +1064,8 @@ df.historical <- df.historical %>%
   mutate(long_round = round(long, 1),
          lat_round = round(lat, 1)) %>%
   left_join(df.census, by = c("long_round", "lat_round")) %>%
-  dplyr::select(-long_round, -lat_round)
-
-### Subset coordinates to find county, state of each waterbody
-##coordinates <- subset(df.historical, select = c("long", "lat"))
-##
-### The single argument to this function, pointsDF, is a dataframe in which:
-###   - column 1 contains the longitude in degrees
-###   - column 2 contains the latitude in degrees
-##
-##latlong2county <- function(pointsDF) {
-##    # Prepare SpatialPolygons object with one SpatialPolygon
-##    # per county
-##    counties <- map('county', fill = TRUE, col = "transparent", plot = FALSE)
-##    IDs <- sapply(strsplit(counties$names, ":"), function(x) x[1])
-##    counties_sp <- map2SpatialPolygons(counties, IDs = IDs,
-##                     proj4string = CRS("+proj=longlat +datum=NAD83"))
-##
-##    # Convert pointsDF to a SpatialPoints object 
-##    pointsSP <- SpatialPoints(pointsDF, 
-##                    proj4string = CRS("+proj=longlat +datum=NAD83"))
-##
-##    # Use 'over' to get _indices_ of the Polygons object containing each point 
-##    indices <- over(pointsSP, counties_sp)
-##
-##    # Return the county names of the Polygons object containing each point
-##    countyNames <- sapply(counties_sp@polygons, function(x) x@ID)
-##    countyNames[indices]
-##}
-##
-### Find county and state for each set of coordinates
-##df.historical$state <- as.vector(latlong2county(coordinates))
-##
-### Separate county and state columns
-##df.historical[66:67] <- do.call('rbind', strsplit(as.character(df.historical$state), ','))
-##
-### Rename and reformat columns
-##df.historical <- df.historical %>%
-##  rename(county  = V2) %>%
-##  mutate(state = ifelse(state == "minnesota", "mn", state),
-##         state = ifelse(state == "wisconsin", "wi", state))
-##
-### Remove "county" from county names in 2010 US census data
-##census$county <- str_sub(census$county, end = -8)
-##
-### Add census data
-##df.historical <- census %>%
-##  rename_all(tolower) %>%
-##  mutate_all(tolower) %>%
-##  left_join(df.historical, ., by = c("county", "state")) %>%
-##  mutate(pop_2010 = as.character(pop_2010)) %>%
-##  mutate(pop_2010 = as.numeric(gsub(",","", pop_2010)),
-##         county = NULL,
-##         state = NULL)
+  dplyr::select(-long_round, -lat_round) %>%
+  mutate_at(c(66), ~replace(., is.na(.), 0))
 
 # Subset localities
 ecoregions.sp <- df.historical %>%
@@ -1718,12 +1671,12 @@ df.future <- df.future %>%
 
 # Perform PCA to collapse collinear covariates into a single variable (air_pca). For this, I only used mean and max air temperature (excluded min air temp) so it matched the PCA of mean and max water temperature
 air.pr <- df.future %>%
-  dplyr::select(mean_air, max_air) %>%
+  dplyr::select(max_air, mean_air, min_air) %>%
   prcomp(center = TRUE, scale = TRUE)
 
 # Add PCA results into monthly air temperature data
 air_pca <- df.future %>%
-  dplyr::select(mean_air, max_air) %>%
+  dplyr::select(max_air, mean_air, min_air) %>%
   as.matrix() %*% air.pr$rotation[,1]
 
 # Add PCA results into monthly water temperature data
@@ -1777,36 +1730,12 @@ census.mn <- coordinates(census.mn) %>%
 df.census <- full_join(census.wi, census.mn)
 
 # Add census data
-df.historical <- df.historical %>%
+df.future <- df.future %>%
   mutate(long_round = round(long, 1),
          lat_round = round(lat, 1)) %>%
   left_join(df.census, by = c("long_round", "lat_round")) %>%
-  dplyr::select(-long_round, -lat_round)
-
-## Subset coordinates to find county, state of each waterbody
-#coordinates <- subset(df.future, select = c("long", "lat"))
-#
-## Find county and state for each set of coordinates
-#df.future$state <- as.vector(latlong2county(coordinates))
-#
-## Separate county and state columns
-#df.future[38:39] <- do.call('rbind', strsplit(as.character(df.future$state), ','))
-#
-## Rename and reformat columns
-#df.future <- df.future %>%
-#  rename(county  = V2) %>%
-#  mutate(state = ifelse(state == "minnesota", "mn", state),
-#         state = ifelse(state == "wisconsin", "wi", state))
-#
-## Add census data
-#df.future <- census %>%
-#  rename_all(tolower) %>%
-#  mutate_all(tolower) %>%
-#  left_join(df.future, ., by = c("county", "state")) %>%
-#  mutate(pop_2010 = as.character(pop_2010)) %>%
-#  mutate(pop_2010 = as.numeric(gsub(",","", pop_2010)),
-#         county = NULL,
-#         state = NULL)
+  dplyr::select(-long_round, -lat_round) %>%
+  mutate_at(c(38), ~replace(., is.na(.), 0))
 
 # Subset localities
 ecoregions.sp <- df.future %>%
@@ -1897,14 +1826,14 @@ tidy_snow <- function(path) {
   names(data) <- c('x', 'y', 'snow')
 
   data$long_round <- round(data$x, 1)
-  data$lat_round <- round(data$y, 1)  
+  data$lat_round  <- round(data$y, 1)  
 
   data_output <- data %>%
     group_by(long_round, lat_round) %>%
-    summarise(Snow = mean(snow))
+    summarise(snow = mean(snow))
     
-  data_output$Year  <- str_sub(path, 24, 27)
-  data_output$Month <- str_sub(path, 28, 29)
+  data_output$year  <- str_sub(path, 24, 27)
+  data_output$month <- str_sub(path, 28, 29)
   return(data_output)
 }
 
