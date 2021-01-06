@@ -95,9 +95,6 @@ testing.wi  <- df.historical %>%
 # Scale data
 pre.proc.values    <- preProcess(training, method = c("center", "scale"))
 
-#Warning in preProcess.default(training, method = c("center", "scale")) :
-#  These variables have zero variances: lepisosteidae, amiidae, cottoidae, gasterosteidae, gobiidae
-
 pre.proc.values.mn <- preProcess(training.mn, method = c("center", "scale"))
 
 #Warning in preProcess.default(training, method = c("center", "scale")) :
