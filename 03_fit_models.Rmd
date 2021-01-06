@@ -123,7 +123,6 @@ testing.wi <- testing.wi %>%
 The first generalized model uses a subset of variables selected based on their presumed effect and not being mutually non-correlated (at least strongly). Throughout the remaining code, models that are named 1) by an "a" or "w" for air and water, respectively, 2) "1" or "2" for simple or complex model, respectively, and 3) "e", "s", or "se" for ecoregion, state, or ecoregion and state, respectively.
 
 ```{r: Simple generalized model}
-############# MN and WI #############
 # Simple generalized model for water temperature (ecoregion)
 w1e <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 +
@@ -158,7 +157,6 @@ a1se <- summerkill ~ long + lat + season + population +
 The second model involves all covariates except site_id, which we treat separately because of the number of levels.
 
 ```{r: Complex generalized model}
-############# MN and WI #############
 # Complex generalized model for water temperature (ecoregion)
 w2e <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
@@ -169,7 +167,7 @@ w2e <- summerkill ~ long + lat + season + population +
   l3_code
 
 # Complex generalized model for air temperature (ecoregion)
-a2e <- summerkill ~ long + lat + season +
+a2e <- summerkill ~ long + lat + season + population +
   min_air + mean_air + max_air + 
   min_air_z + mean_air_z + max_air_z +
   air_quad_temp + l3_code
@@ -184,7 +182,7 @@ w2s <- summerkill ~ long + lat + season + population +
   state
 
 # Complex generalized model for air temperature (state)
-a2s <- summerkill ~ long + lat + season +
+a2s <- summerkill ~ long + lat + season + population +
   min_air + mean_air + max_air + 
   min_air_z + mean_air_z + max_air_z +
   air_quad_temp + state
@@ -199,7 +197,7 @@ w2se <- summerkill ~ long + lat + season + population +
   state + l3_code
 
 # Complex generalized model for air temperature (state and ecoregion)
-a2se <- summerkill ~ long + lat + season +
+a2se <- summerkill ~ long + lat + season + population +
   min_air + mean_air + max_air + 
   min_air_z + mean_air_z + max_air_z +
   air_quad_temp + state + l3_code
@@ -228,7 +226,7 @@ w2e.state <- summerkill ~ long + lat + season + population +
   l3_code
 
 # Complex generalized model for air temperature (ecoregion)
-a2e.state <- summerkill ~ long + lat + season +
+a2e.state <- summerkill ~ long + lat + season + population +
   min_air + mean_air + max_air + 
   min_air_z + mean_air_z + max_air_z +
   air_quad_temp + l3_code
