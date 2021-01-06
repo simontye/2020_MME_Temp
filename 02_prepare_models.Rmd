@@ -1,7 +1,7 @@
 ---
 title: "prepare models"
 author: "fishkill friends"
-date: "2020/11/10"
+date: "2021/01/05"
 output: github_document
 ---
 
@@ -23,43 +23,7 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/p
 
 # Load historical data
 df.historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
-df.future <- read.csv(file = "df_future.csv", head = TRUE, sep = ",")
-
-# Headers
-head(df.historical)
-head(df.future)
-```
-
-```{r: Load packages and data}
-# Plot rough comparison
-# Create theme
-pretty <- theme_classic(base_size = 12) +
-  theme(axis.title.y      = element_text(margin = margin(r = 20)),
-        axis.title.x      = element_text(margin = margin(t = 20)), 
-        axis.text         = element_text(color = "black"), 
-        axis.ticks        = element_line(color = "black"),
-        axis.ticks.length = unit(.25, "cm"), 
-        legend.key.size   = unit(1.5,  'lines'),
-        legend.position   = "right")
-
-mn <- subset(df.historical, state == "minnesota")
-wi <- subset(df.historical, state == "wisconsin")
-
-no  <- subset(df.historical, summerkill == "0")
-yes <- subset(df.historical, summerkill == "1")
-
-# Plot rough comparison
-ggplot() +
-  geom_point(no, mapping = aes(x = max_surf, y = max_air), size = 0.05, color = "lightblue") +
-  geom_point(yes,  mapping = aes(x = max_surf, y = max_air), size = 3, color = "darkred") +
-  labs(y = "Max air temp", x = "Max water temp") +
-  pretty
-#ggsave("mme_water_do.pdf")```
-
-###############################################################
-### Water quality parameters
-###############################################################
-
+#df.future     <- read.csv(file = "df_future.csv", head = TRUE, sep = ",")
 ```
 
 ### Step 2: Partition and scale data
@@ -84,33 +48,79 @@ df.historical <- df.historical %>%
                                  "neg" = "0",
                                  "pos" = "1"))
 
-#plot(df.historical$min_air, df.historical$year)
-#plot(df.historical$mean_surf, df.historical$year)
-#?poly
+# Subset by state
+mn <- subset(df.historical, state == "minnesota")
+wi <- subset(df.historical, state == "wisconsin")
+
 # Set seed
-set.seed(666)
+set.seed(406)
 
 # Creates series of training partitions
-in.training <- createDataPartition(df.historical$summerkill, p = .75, list = FALSE)
+in.training    <- createDataPartition(df.historical$summerkill, p = .75, list = FALSE)
+in.training.mn <- createDataPartition(mn$summerkill, p = .75, list = FALSE)
+in.training.wi <- createDataPartition(wi$summerkill, p = .75, list = FALSE)
 
 # Partition training data
-training <- df.historical  %>%
+training    <- df.historical  %>%
   slice(in.training)
 
+training.mn <- mn  %>%
+  slice(in.training.mn)
+
+training.wi <- wi  %>%
+  slice(in.training.wi)
+
 # Partition testing data
-testing  <- df.historical %>%
+testing     <- df.historical %>%
   slice(-in.training)
 
+testing.mn  <- df.historical %>%
+  slice(-in.training.mn)
+
+testing.wi  <- df.historical %>%
+  slice(-in.training.wi)
+
 # Scale data
-pre.proc.values <- preProcess(training, method = c("center", "scale"))
+pre.proc.values    <- preProcess(training, method = c("center", "scale"))
+
+#Warning in preProcess.default(training, method = c("center", "scale")) :
+#  These variables have zero variances: lepisosteidae, amiidae, cottoidae, gasterosteidae, gobiidae
+
+pre.proc.values.mn <- preProcess(training.mn, method = c("center", "scale"))
+
+#Warning in preProcess.default(training, method = c("center", "scale")) :
+#  These variables have zero variances: lepisosteidae, amiidae, cottoidae, gasterosteidae, gobiidae
+
+pre.proc.values.wi <- preProcess(training.wi, method = c("center", "scale"))
+
+#Warning in preProcess.default(training, method = c("center", "scale")) :
+#  These variables have zero variances: lepisosteidae, amiidae, cottoidae, gasterosteidae, gobiidae
 
 # Create training set
-training <- predict(pre.proc.values, training) %>%
+training    <- predict(pre.proc.values, training) %>%
+  mutate(year = as.integer(year))
+
+training.mn <- predict(pre.proc.values.mn, training.mn) %>%
+  mutate(year = as.integer(year))
+
+training.wi <- predict(pre.proc.values.wi, training.wi) %>%
   mutate(year = as.integer(year))
 
 # Create testing set
-testing <- predict(pre.proc.values, testing) %>%
+testing    <- predict(pre.proc.values, testing) %>%
   mutate(summerkill = factor(testing$summerkill, 
+                             levels = c("pos", "neg"), 
+                             ordered = TRUE),
+         year = as.integer(year))
+
+testing.mn <- predict(pre.proc.values.mn, testing.mn) %>%
+  mutate(summerkill = factor(testing.mn$summerkill, 
+                             levels = c("pos", "neg"), 
+                             ordered = TRUE),
+         year = as.integer(year))
+
+testing.wi <- predict(pre.proc.values.wi, testing.wi) %>%
+  mutate(summerkill = factor(testing.wi$summerkill, 
                              levels = c("pos", "neg"), 
                              ordered = TRUE),
          year = as.integer(year))
@@ -119,13 +129,20 @@ testing <- predict(pre.proc.values, testing) %>%
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
 
 # Export data
-write_csv(training, "training.csv")
-write_csv(testing,  "testing.csv")
+write_csv(training,    "training.csv")
+write_csv(training.mn, "training_mn.csv")
+write_csv(training.wi, "training_wi.csv")
+
+write_csv(testing,    "testing.csv")
+write_csv(testing.mn, "testing_mn.csv")
+write_csv(testing.wi, "testing_wi.csv")
 
 # Remove dataframes
 rm(df.historical,
-   in.training, pre.proc.values,
-   testing, training)
+   in.training, in.training.mn, in.training.wi,
+   pre.proc.values, pre.proc.values.mn, pre.proc.values.wi,
+   testing, testing.mn, testing.wi,
+   training, training.mn, training.wi)
 ```
 
 ######################################

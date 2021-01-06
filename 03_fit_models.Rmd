@@ -49,7 +49,9 @@ training <- training %>%
          season       = as.character(season),
          summerkill   = as.factor(summerkill),
          ice_duration = as.double(ice_duration),
-         pop_2010     = as.numeric(pop_2010))
+         population   = as.numeric(population),
+         state        = as.character(state),
+         l3_code      = as.character(l3_code))
 
 # Reformat testing data
 testing <- testing %>%
@@ -59,50 +61,105 @@ testing <- testing %>%
          season       = as.character(season),
          summerkill   = as.factor(summerkill),
          ice_duration = as.double(ice_duration),
-         pop_2010     = as.numeric(pop_2010))
+         population   = as.numeric(population),
+         state        = as.character(state),
+         l3_code      = as.character(l3_code))
+
+# Reformat training data
+training.mi <- training.mi %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.factor(summerkill),
+         ice_duration = as.double(ice_duration),
+         population   = as.numeric(population),
+         state        = as.character(state),
+         l3_code      = as.character(l3_code))
+
+# Reformat testing data
+testing.mi <- testing.mi %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.factor(summerkill),
+         ice_duration = as.double(ice_duration),
+         population   = as.numeric(population),
+         state        = as.character(state),
+         l3_code      = as.character(l3_code))
+
+# Reformat training data
+training.wi <- training.wi %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.factor(summerkill),
+         ice_duration = as.double(ice_duration),
+         population   = as.numeric(population),
+         state        = as.character(state),
+         l3_code      = as.character(l3_code))
+
+# Reformat testing data
+testing.wi <- testing.wi %>%
+  mutate(site_id      = as.character(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.character(season),
+         summerkill   = as.factor(summerkill),
+         ice_duration = as.double(ice_duration),
+         population   = as.numeric(population),
+         state        = as.character(state),
+         l3_code      = as.character(l3_code))
 ```
 
 ### Step 2: Specify variable sets
 
-The first generalized model uses a subset of variables selected based on their presumed effect and not being mutually non-correlated (at least strongly). Throughout the remaining code, models that are based on air or water temperature begin with "a" or "w", respectively.
+The first generalized model uses a subset of variables selected based on their presumed effect and not being mutually non-correlated (at least strongly). Throughout the remaining code, models that are named 1) by an "a" or "w" for air and water, respectively, 2) "1" or "2" for simple or complex model, respectively, and 3) "e", "s", or "se" for ecoregion, state, or ecoregion and state, respectively.
 
-```{r: First generalized model}
+```{r: Simple generalized model}
+############# MN and WI #############
 # Simple generalized model for water temperature (ecoregion)
-w1e <- summerkill ~ long + lat + season + pop_2010 +
+w1e <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 +
   log_schmidt + cumulative_above_10 + ice_duration +
   water_pca + l3_code
 
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
 # Simple generalized model for air temperature (ecoregion)
-a1e <- summerkill ~ long + lat + season + pop_2010 +
+a1e <- summerkill ~ long + lat + season + population +
   air_pca + l3_code
 
 # Simple generalized model for water temperature (state)
-w1s <- summerkill ~ long + lat + season + pop_2010 +
+w1s <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 +
   log_schmidt + cumulative_above_10 + ice_duration +
   water_pca + state
 
 # Simple generalized model for air temperature (state)
-a1s <- summerkill ~ long + lat + season + pop_2010 +
+a1s <- summerkill ~ long + lat + season + population +
   air_pca + state
 
 # Simple generalized model for water temperature (state and ecoregion)
-w1se <- summerkill ~ long + lat + season + pop_2010 +
+w1se <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 +
   log_schmidt + cumulative_above_10 + ice_duration +
   water_pca + state + l3_code
 
 # Simple generalized model for air temperature (state and ecoregion)
-a1se <- summerkill ~ long + lat + season + pop_2010 +
+a1se <- summerkill ~ long + lat + season + population +
   air_pca + state + l3_code
 ```
 
 The second model involves all covariates except site_id, which we treat separately because of the number of levels.
 
-```{r: Second generalized model}
+```{r: Complex generalized model}
+############# MN and WI #############
 # Complex generalized model for water temperature (ecoregion)
-w2e <- summerkill ~ long + lat + season + pop_2010 +
+w2e <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
   cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
   max_bot + max_surf + mean_bot + mean_surf +
@@ -117,7 +174,7 @@ a2e <- summerkill ~ long + lat + season +
   air_quad_temp + l3_code
 
 # Complex generalized model for water temperature (state)
-w2s <- summerkill ~ long + lat + season + pop_2010 +
+w2s <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
   cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
   max_bot + max_surf + mean_bot + mean_surf +
@@ -132,7 +189,7 @@ a2s <- summerkill ~ long + lat + season +
   air_quad_temp + state
 
 # Complex generalized model for water temperature (state and ecoregion)
-w2se <- summerkill ~ long + lat + season + pop_2010 +
+w2se <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
   cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
   max_bot + max_surf + mean_bot + mean_surf +
@@ -145,6 +202,39 @@ a2se <- summerkill ~ long + lat + season +
   min_air + mean_air + max_air + 
   min_air_z + mean_air_z + max_air_z +
   air_quad_temp + state + l3_code
+```
+
+These are for the simple models by state. For now, ecoregion (l3_code) is included.
+
+```{r: Simple generalized model}
+# Simple generalized model for water temperature (ecoregion)
+w1e.state <- summerkill ~ long + lat + season + population +
+  variance_after_ice_30 + variance_after_ice_60 +
+  log_schmidt + cumulative_above_10 + ice_duration +
+  water_pca + l3_code
+
+# Simple generalized model for air temperature (ecoregion)
+a1e.state <- summerkill ~ long + lat + season + population +
+  air_pca + l3_code
+```
+
+These models are for the complex models by state. For now, ecoregion (l3_code) is included.
+
+```{r: Second generalized model}
+# Complex generalized model for water temperature (ecoregion)
+w2e.state <- summerkill ~ long + lat + season + population +
+  variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
+  cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
+  max_bot + max_surf + mean_bot + mean_surf +
+  max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
+  ice_duration + layer_diff + water_quad_temp + peak_temp +
+  l3_code
+
+# Complex generalized model for air temperature (ecoregion)
+a2e.state <- summerkill ~ long + lat + season +
+  min_air + mean_air + max_air + 
+  min_air_z + mean_air_z + max_air_z +
+  air_quad_temp + l3_code
 ```
 
 ### Step 3: Set up parameters for lambda selection for ridge and lasso regressions
@@ -170,48 +260,48 @@ control_logloss_ds <- trainControl(method = "repeatedcv",
 
 ### Step 4: Logistic regressions
 
-First set of generalized models (w1 and a1)
+Simple generalized models (a1/w1 + e/s/se)
 
-```{r: First logistic regression}
+```{r: Simple logistic regression}
 # Set seed
-set.seed(432)
+set.seed(736)
 
-### Water
+### Simple water models
 
-# First generalized model for water temperature
-logistic_w1e <- glm(w1, training, family = "binomial")
+# Simple generalized model for water temperature
+logistic_w1e <- glm(w1e, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_w1e <- step(logistic_w1e)
 
-# First generalized model for water temperature
-logistic_w1s <- glm(w1, training, family = "binomial")
+# Simple generalized model for water temperature
+logistic_w1s <- glm(w1s, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_w1s <- step(logistic_w1s)
 
-# First generalized model for air temperature
-logistic_w1se <- glm(a1, training, family = "binomial")
+# Simple generalized model for air temperature
+logistic_w1se <- glm(w1se, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_w1se <- step(logistic_w1se)
 
-### Air
+### Simple air models
 
-# First generalized model for water temperature
-logistic_a1e <- glm(w1, training, family = "binomial")
+# Simple generalized model for water temperature
+logistic_a1e <- glm(a1e, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_a1e <- step(logistic_a1e)
 
-# First generalized model for water temperature
-logistic_a1s <- glm(w1, training, family = "binomial")
+# Simple generalized model for water temperature
+logistic_a1s <- glm(a1s, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_a1s <- step(logistic_a1s)
 
-# First generalized model for air temperature
-logistic_a1se <- glm(a1, training, family = "binomial")
+# Simple generalized model for air temperature
+logistic_a1se <- glm(a1se, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_a1se <- step(logistic_a1se)
@@ -230,31 +320,139 @@ rm(logistic_w1e.rds, logistic_w1s.rds,
    logistic_a1s.rds, logistic_a1se.rds)
 ```
 
-Second set of generalized model (w2 and a2)
+Complex generalized models (a2/w2 + e/s/se)
 
-```{r: Second logistic regression}
-# Second generalized model for water temperature
-logistic_w2 <- glm(w2, training, family = "binomial") 
+```{r: Complex logistic regression}
+# Set seed
+set.seed(306)
 
-# glm.fit: fitted probabilities numerically 0 or 1 occurred 
+### Complex water models
 
-# Stepwise model comparisons by AIC
-logistic_w2 <- step(logistic_w2)
-
-# Second generalized model for air temperature
-logistic_a2 <- glm(a2, training, family = "binomial") 
-
-# glm.fit: fitted probabilities numerically 0 or 1 occurred 
+# Complex generalized model for water temperature
+logistic_w2e <- glm(w2e, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_a2 <- step(logistic_a2)
+logistic_w2e <- step(logistic_w2e)
+
+# Complex generalized model for water temperature
+logistic_w2s <- glm(w2s, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_w2s <- step(logistic_w2s)
+
+# Complex generalized model for air temperature
+logistic_w2se <- glm(w1se, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_w2se <- step(logistic_w2se)
+
+### Complex air models
+
+# Complex generalized model for water temperature
+logistic_a2e <- glm(a2e, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a2e <- step(logistic_a2e)
+
+# Complex generalized model for water temperature
+logistic_a2s <- glm(a2s, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a2s <- step(logistic_a2s)
+
+# Complex generalized model for air temperature
+logistic_a2se <- glm(a2se, training, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a2se <- step(logistic_a2se)
 
 # Save models
-write_rds(logistic_w2, "assessment/logistic_w2.rds")
-write_rds(logistic_a2, "assessment/logistic_a2.rds")
+write_rds(logistic_w2e,  "assessment/logistic_w2e.rds")
+write_rds(logistic_w2s,  "assessment/logistic_w2s.rds")
+write_rds(logistic_w2se, "assessment/logistic_w2se.rds")
+write_rds(logistic_a2e,  "assessment/logistic_a2e.rds")
+write_rds(logistic_a2s,  "assessment/logistic_a2s.rds")
+write_rds(logistic_a2se, "assessment/logistic_a2se.rds")
 
 # Remove models
-rm(logistic_w2, logistic_a2)
+rm(logistic_w2e.rds,  logistic_w2s.rds,
+   logistic_w2se.rds, logistic_a2e.rds,
+   logistic_a2s.rds,  logistic_a2se.rds)
+```
+
+State-specific models
+
+```{r: Complex logistic regression}
+# Set seed
+set.seed(306)
+
+### MN models
+
+# Simple generalized model for water temperature
+logistic_w1e.mi <- glm(w1e.state, training.mi, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_w1e.mi <- step(logistic_w1e.mi)
+
+# Simple generalized model for air temperature
+logistic_a1s.mi <- glm(a1e.state, training.mi, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a1s.mi <- step(logistic_a1s.mi)
+
+# Complex generalized model for water temperature
+logistic_w2e.mi <- glm(w2e.state, training.mi, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_w2e.mi <- step(logistic_w2e.mi)
+
+# Complex generalized model for air temperature
+logistic_a2e.mi <- glm(a2e.state, training.mi, family = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a2e.mi <- step(logistic_a2e.mi)
+
+### WI models
+
+# Simple generalized model for water temperature
+logistic_w1e.wi <- glm(w1e.state, training.wi, fawily = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_w1e.wi <- step(logistic_w1e.wi)
+
+# Simple generalized model for air temperature
+logistic_a1s.wi <- glm(a1e.state, training.wi, fawily = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a1s.wi <- step(logistic_a1s.wi)
+
+# Complex generalized model for water temperature
+logistic_w2e.wi <- glm(w2e.state, training.wi, fawily = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_w2e.wi <- step(logistic_w2e.wi)
+
+# Complex generalized model for air temperature
+logistic_a2e.wi <- glm(a2e.state, training.wi, fawily = "binomial")
+
+# Stepwise model comparisons by AIC
+logistic_a2e.wi <- step(logistic_a2e.wi)
+
+# Save models
+write_rds(logistic_w1e.mi, "assessment/logistic_w1e_mi.rds")
+write_rds(logistic_a1e.mi, "assessment/logistic_a1e_mi.rds")
+write_rds(logistic_w2e.mi, "assessment/logistic_w2e_mi.rds")
+write_rds(logistic_a2e.mi, "assessment/logistic_a2e_mi.rds")
+write_rds(logistic_w1e.wi, "assessment/logistic_w1e_wi.rds")
+write_rds(logistic_a1e.wi, "assessment/logistic_a1e_wi.rds")
+write_rds(logistic_w2e.wi, "assessment/logistic_w2e_wi.rds")
+write_rds(logistic_a2e.wi, "assessment/logistic_a2e_wi.rds")
+
+# Remove models
+rm(logistic_w1e.mi, logistic_a1e.mi,
+   logistic_w2e.mi, logistic_a2e.mi,
+   logistic_w1e.wi, logistic_a1e.wi,
+   logistic_w2e.wi, logistic_a2e.wi)
 ```
 
 ### Step 5: Lasso regressions
