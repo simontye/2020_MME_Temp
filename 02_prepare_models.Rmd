@@ -41,16 +41,28 @@ df.historical <- df.historical %>%
          ice_duration = as.double(ice_duration),
          population   = as.numeric(population),
          state        = as.character(state),
-         l3_code      = as.character(l3_code) %>%
+         l3_code      = as.character(l3_code)) %>%
   dplyr::select(., -c("anthropogenic", "infectious", "unknown", "winterkill",
-                      "event", "gnis_nm")) %>%
+                      "event", "gnis_nm", "elev", "id",
+                      "centrarchidae", "percidae", "esocidae",
+                      "ictaluridae", "cyprinidae", "salmonidae",
+                      "catostomidae", "sciaenidae", "clupeidae",
+                      "osmeridae", "lepisosteidae", "acipenseridae",
+                      "amiidae", "cottoidae", "gasterosteidae",
+                      "gobiidae", "l4_code", "l4_name",
+                      "fish_families", "fish_species")) %>%
   mutate(summerkill = fct_recode(summerkill,
                                  "neg" = "0",
                                  "pos" = "1"))
 
 # Subset by state
-mn <- subset(df.historical, state == "minnesota")
-wi <- subset(df.historical, state == "wisconsin")
+mn <- df.historical %>%
+  subset(., state == "minnesota") %>%
+    dplyr::select(., -c("state"))
+
+wi <- df.historical %>%
+  subset(., state == "wisconsin") %>%
+    dplyr::select(., -c("state"))
 
 # Set seed
 set.seed(406)
