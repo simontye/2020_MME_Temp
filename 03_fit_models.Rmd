@@ -38,8 +38,12 @@ rm(list = ls())
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
 
 # Load data
-training <- read.csv(file = "training.csv", head = TRUE, sep = ",")
-testing  <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
+training    <- read.csv(file = "training.csv", head = TRUE, sep = ",")
+training.mn <- read.csv(file = "training_mn.csv", head = TRUE, sep = ",")
+training.wi <- read.csv(file = "training_wi.csv", head = TRUE, sep = ",")
+testing     <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
+testing.mn  <- read.csv(file = "testing_mn.csv",  head = TRUE, sep = ",")
+testing.wi  <- read.csv(file = "testing_wi.csv",  head = TRUE, sep = ",")
 
 # Reformat training data
 training <- training %>%
@@ -66,7 +70,7 @@ testing <- testing %>%
          l3_code      = as.character(l3_code))
 
 # Reformat training data
-training.mi <- training.mi %>%
+training.mn <- training.mn %>%
   mutate(site_id      = as.character(site_id),
          year         = as.character(year),
          month        = as.character(month),
@@ -78,7 +82,7 @@ training.mi <- training.mi %>%
          l3_code      = as.character(l3_code))
 
 # Reformat testing data
-testing.mi <- testing.mi %>%
+testing.mn <- testing.mn %>%
   mutate(site_id      = as.character(site_id),
          year         = as.character(year),
          month        = as.character(month),
@@ -125,9 +129,6 @@ w1e <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 +
   log_schmidt + cumulative_above_10 + ice_duration +
   water_pca + l3_code
-
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
 # Simple generalized model for air temperature (ecoregion)
 a1e <- summerkill ~ long + lat + season + population +
@@ -204,7 +205,7 @@ a2se <- summerkill ~ long + lat + season +
   air_quad_temp + state + l3_code
 ```
 
-These are for the simple models by state. For now, ecoregion (l3_code) is included.
+These are for the simple and complex models by state. For now, ecoregion (l3_code) is included.
 
 ```{r: Simple generalized model}
 # Simple generalized model for water temperature (ecoregion)
@@ -216,11 +217,7 @@ w1e.state <- summerkill ~ long + lat + season + population +
 # Simple generalized model for air temperature (ecoregion)
 a1e.state <- summerkill ~ long + lat + season + population +
   air_pca + l3_code
-```
 
-These models are for the complex models by state. For now, ecoregion (l3_code) is included.
-
-```{r: Second generalized model}
 # Complex generalized model for water temperature (ecoregion)
 w2e.state <- summerkill ~ long + lat + season + population +
   variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
@@ -331,17 +328,26 @@ set.seed(306)
 # Complex generalized model for water temperature
 logistic_w2e <- glm(w2e, training, family = "binomial")
 
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
 # Stepwise model comparisons by AIC
 logistic_w2e <- step(logistic_w2e)
 
 # Complex generalized model for water temperature
 logistic_w2s <- glm(w2s, training, family = "binomial")
 
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
 # Stepwise model comparisons by AIC
 logistic_w2s <- step(logistic_w2s)
 
 # Complex generalized model for air temperature
 logistic_w2se <- glm(w1se, training, family = "binomial")
+
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
 # Stepwise model comparisons by AIC
 logistic_w2se <- step(logistic_w2se)
@@ -389,68 +395,68 @@ set.seed(306)
 ### MN models
 
 # Simple generalized model for water temperature
-logistic_w1e.mi <- glm(w1e.state, training.mi, family = "binomial")
+logistic_w1e.mn <- glm(w1e.state, training.mn, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_w1e.mi <- step(logistic_w1e.mi)
+logistic_w1e.mn <- step(logistic_w1e.mn)
 
 # Simple generalized model for air temperature
-logistic_a1s.mi <- glm(a1e.state, training.mi, family = "binomial")
+logistic_a1s.mn <- glm(a1e.state, training.mn, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_a1s.mi <- step(logistic_a1s.mi)
+logistic_a1s.mn <- step(logistic_a1s.mn)
 
 # Complex generalized model for water temperature
-logistic_w2e.mi <- glm(w2e.state, training.mi, family = "binomial")
+logistic_w2e.mn <- glm(w2e.state, training.mn, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_w2e.mi <- step(logistic_w2e.mi)
+logistic_w2e.mn <- step(logistic_w2e.mn)
 
 # Complex generalized model for air temperature
-logistic_a2e.mi <- glm(a2e.state, training.mi, family = "binomial")
+logistic_a2e.mn <- glm(a2e.state, training.mn, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_a2e.mi <- step(logistic_a2e.mi)
+logistic_a2e.mn <- step(logistic_a2e.mn)
 
 ### WI models
 
 # Simple generalized model for water temperature
-logistic_w1e.wi <- glm(w1e.state, training.wi, fawily = "binomial")
+logistic_w1e.wi <- glm(w1e.state, training.wi, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_w1e.wi <- step(logistic_w1e.wi)
 
 # Simple generalized model for air temperature
-logistic_a1s.wi <- glm(a1e.state, training.wi, fawily = "binomial")
+logistic_a1s.wi <- glm(a1e.state, training.wi, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_a1s.wi <- step(logistic_a1s.wi)
 
 # Complex generalized model for water temperature
-logistic_w2e.wi <- glm(w2e.state, training.wi, fawily = "binomial")
+logistic_w2e.wi <- glm(w2e.state, training.wi, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_w2e.wi <- step(logistic_w2e.wi)
 
 # Complex generalized model for air temperature
-logistic_a2e.wi <- glm(a2e.state, training.wi, fawily = "binomial")
+logistic_a2e.wi <- glm(a2e.state, training.wi, family = "binomial")
 
 # Stepwise model comparisons by AIC
 logistic_a2e.wi <- step(logistic_a2e.wi)
 
 # Save models
-write_rds(logistic_w1e.mi, "assessment/logistic_w1e_mi.rds")
-write_rds(logistic_a1e.mi, "assessment/logistic_a1e_mi.rds")
-write_rds(logistic_w2e.mi, "assessment/logistic_w2e_mi.rds")
-write_rds(logistic_a2e.mi, "assessment/logistic_a2e_mi.rds")
+write_rds(logistic_w1e.mn, "assessment/logistic_w1e_mn.rds")
+write_rds(logistic_a1e.mn, "assessment/logistic_a1e_mn.rds")
+write_rds(logistic_w2e.mn, "assessment/logistic_w2e_mn.rds")
+write_rds(logistic_a2e.mn, "assessment/logistic_a2e_mn.rds")
 write_rds(logistic_w1e.wi, "assessment/logistic_w1e_wi.rds")
 write_rds(logistic_a1e.wi, "assessment/logistic_a1e_wi.rds")
 write_rds(logistic_w2e.wi, "assessment/logistic_w2e_wi.rds")
 write_rds(logistic_a2e.wi, "assessment/logistic_a2e_wi.rds")
 
 # Remove models
-rm(logistic_w1e.mi, logistic_a1e.mi,
-   logistic_w2e.mi, logistic_a2e.mi,
+rm(logistic_w1e.mn, logistic_a1e.mn,
+   logistic_w2e.mn, logistic_a2e.mn,
    logistic_w1e.wi, logistic_a1e.wi,
    logistic_w2e.wi, logistic_a2e.wi)
 ```
