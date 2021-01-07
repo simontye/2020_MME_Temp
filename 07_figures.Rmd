@@ -50,36 +50,38 @@ no  <- subset(df.historical, summerkill == "0")
 yes <- subset(df.historical, summerkill == "1")
 
 # Subset ecoregions
-e.46 <- subset(df.historical, l3_code == "46")
-e.48 <- subset(df.historical, l3_code == "48")
-e.50 <- subset(df.historical, l3_code == "50")
-e.52 <- subset(df.historical, l3_code == "52")
-e.54 <- subset(df.historical, l3_code == "54")
+#e.46 <- subset(df.historical, l3_code == "46")
+#e.48 <- subset(df.historical, l3_code == "48")
+#e.50 <- subset(df.historical, l3_code == "50")
+#e.52 <- subset(df.historical, l3_code == "52")
+#e.54 <- subset(df.historical, l3_code == "54")
 
 # Max surface water temperature by month
 ggplot() +
   geom_point(df.historical, mapping = aes(x = month, y = max_surf, color = season), size = 0.05) +
   labs(y = "Max surface water temperature (ºC)", x = "Month") +
+  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
   pretty
 
 # Max bottom water temperature by month
 ggplot() +
-  geom_point(df.historical, mapping = aes(x = month, y = max_surf, color = season), size = 0.05) +
+  geom_point(df.historical, mapping = aes(x = month, y = max_bot, color = season), size = 0.05) +
   labs(y = "Max bottom water temperature (ºC)", x = "Month") +
+  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
   pretty
 
 # Fishkills by maximum surface water and air temperature (colored by presence)
 ggplot() +
   geom_point(no, mapping = aes(x = max_surf, y = max_air), size = 0.05, color = "lightblue") +
-  geom_point(yes,  mapping = aes(x = max_surf, y = max_air, color = l3_code), size = 2) +
+  geom_point(yes,  mapping = aes(x = max_surf, y = max_air, color = state), size = 2) +
   labs(y = "Max air temperature (ºC)", x = "Max surface water temperature (ºC)") +
   pretty
 
 # Fishkills by maximum surface water and air temperature (colored by state)
 ggplot() +
-  geom_point(no, mapping = aes(x = max_surf, y = max_air), size = 0.05, color = "lightblue") +
-  geom_point(yes,  mapping = aes(x = max_surf, y = max_air, color = state), size = 2) +
+  geom_point(df.historical, mapping = aes(x = max_surf, y = max_air, color = season), size = 0.05) +
   labs(y = "Max air temperature (ºC)", x = "Max surface water temperature (ºC)") +
+  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
   pretty
 
 # Fishkills by maximum surface water and air temperature (colored by season)
