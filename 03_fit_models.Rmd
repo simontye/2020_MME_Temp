@@ -266,17 +266,26 @@ set.seed(736)
 # Simple generalized model for water temperature
 logistic_w1e <- glm(w1e, training, family = "binomial")
 
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+
 # Stepwise model comparisons by AIC
 logistic_w1e <- step(logistic_w1e)
 
-# Simple generalized model for water temperature
+# Simple generalized model for water temperatures
 logistic_w1s <- glm(w1s, training, family = "binomial")
+
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
 # Stepwise model comparisons by AIC
 logistic_w1s <- step(logistic_w1s)
 
 # Simple generalized model for air temperature
 logistic_w1se <- glm(w1se, training, family = "binomial")
+
+### Warning message:
+### glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
 # Stepwise model comparisons by AIC
 logistic_w1se <- step(logistic_w1se)
@@ -399,10 +408,10 @@ logistic_w1e.mn <- glm(w1e.state, training.mn, family = "binomial")
 logistic_w1e.mn <- step(logistic_w1e.mn)
 
 # Simple generalized model for air temperature
-logistic_a1s.mn <- glm(a1e.state, training.mn, family = "binomial")
+logistic_a1e.mn <- glm(a1e.state, training.mn, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_a1s.mn <- step(logistic_a1s.mn)
+logistic_a1e.mn <- step(logistic_a1s.mn)
 
 # Complex generalized model for water temperature
 logistic_w2e.mn <- glm(w2e.state, training.mn, family = "binomial")
@@ -425,10 +434,10 @@ logistic_w1e.wi <- glm(w1e.state, training.wi, family = "binomial")
 logistic_w1e.wi <- step(logistic_w1e.wi)
 
 # Simple generalized model for air temperature
-logistic_a1s.wi <- glm(a1e.state, training.wi, family = "binomial")
+logistic_a1e.wi <- glm(a1e.state, training.wi, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_a1s.wi <- step(logistic_a1s.wi)
+logistic_a1e.wi <- step(logistic_a1s.wi)
 
 # Complex generalized model for water temperature
 logistic_w2e.wi <- glm(w2e.state, training.wi, family = "binomial")
