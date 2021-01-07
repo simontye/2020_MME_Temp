@@ -57,22 +57,19 @@ Runs the best fit models based on assessments.
 Contains statistical tests used in Till et al., (2019). I am holding off on this until we agree on the models used in the above steps.
 
 ## Data
-All data files are in the following folders:raw, processed, or models. These data are available for download via GitHub or R.
-For GitHub, click "Release" in the top menu and then download the latest releases (1.3a, 1.3b, 1.3c).
-These are in separate files because there is a 2 GB limit for this method.
-It will likely have to be spread out into 3+ compressed files soon.
-For R, run the following chunk of code.
+All data files are in the following folders: data/raw, data/processed, or data/models. The first two folders (raw and processed) are available for download via GitHub or R. The third folder (models) is too large for GitHub. All three folders are also available on a Google Drive maintained by Sam Fey (https://drive.google.com/drive/folders/1t64Sopf__xee70lAIRQXr0ORG4-1xym6).
+
+To download the data/raw and data/processed folders from GitHub, click "Release" in the top menu and download both of the latest releases (1.0a and 1.0b). These are in separate files because there is a 2 GB limit for this method.
+
+To download these folders via R, run the following chunk of code:
 
 ```{R: Download data files}
 # install.packages("piggyback")
 # require(piggyback)
 # pb_download(repo = "simontye/2020_MME_Temp",
-#             tag  = "1.3a",
+#             tag  = "1.0a",
 #             dest = "data")
 # pb_download(repo = "simontye/2020_MME_Temp",
-#             tag  = "1.3b",
-#             dest = "data")
-# pb_download(repo = "simontye/2020_MME_Temp",
-#             tag  = "1.3c",
+#             tag  = "1.0b",
 #             dest = "data")
 ```
