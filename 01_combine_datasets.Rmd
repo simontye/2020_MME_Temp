@@ -1,7 +1,7 @@
 ---
 title: "combine datasets"
 author: "fishkill friends"
-date: "2021/01/05"
+date: "2021/02/02"
 output: github_document
 ---
 
@@ -592,10 +592,6 @@ This reformats the historical water temperature data (2003-2013). First, this re
 - `water_pca`:  Single PC for all water temperature data.
 
 ```{r: Add water temperature data}
-
-# Save
-save.image("test.R")
-
 # Reformat water temperature dataset
 hist.water <- hist.water %>%
   rename_all(tolower) %>%
@@ -672,8 +668,8 @@ hist.water.month <- hist.water.month %>%
                               "9"  = "sep",
                               "10" = "oct",
                               "11" = "nov")) %>%
-  mutate(year  = as.numeric(year),
-         month = as.numeric(month))
+  mutate(year  = as.numeric(as.character(year)),
+         month = as.numeric(as.character(month)))
 
 # Perform PCA to collapse collinear covariates into a single variable
 water.pr <- hist.water.month %>%
@@ -683,7 +679,10 @@ water.pr <- hist.water.month %>%
 # Isolate PCA results into separate dataframe
 water_pca <- hist.water.month %>%
   dplyr::select(max_surf, mean_surf, mean_bot) %>%
-  as.matrix() %*% water.pr$rotation[,1]
+  as.matrix() %*% water.pr$rotation[, 1]
+
+# Change "anti-temperature" to temperature
+water_pca <- (water_pca * -1)
 
 # Add PCA results into monthly water temperature data
 hist.water.month <- hist.water.month %>%
@@ -949,15 +948,10 @@ hist.air <- localities %>%
   mutate(id = as.character(id)) %>%
   full_join(hist.air, ., by = "id")
 
-## Add air temperature to historical dataframe
+# Add air temperature to historical dataframe
 df.historical <- df.historical %>%
   dplyr::select(., -c("lat", "long", "state", "county")) %>%
   full_join(hist.air, ., by = c("site_id", "year", "month"))
-
-#%>%
-#  dplyr::group_by(site_id) %>%
-#  fill(c(lat, long), .direction = "downup") %>% # fills in waterbody characteristics by site_id
-#  dplyr::ungroup()
 
 # Create z-scores
 df.historical <- df.historical %>%
@@ -976,7 +970,7 @@ air.pr <- df.historical %>%
 # Add PCA results into monthly air temperature data
 air_pca <- df.historical %>%
   dplyr::select(max_air, mean_air, min_air) %>%
-  as.matrix() %*% air.pr$rotation[,1]
+  as.matrix() %*% air.pr$rotation[, 1]
 
 # Add PCA results into monthly water temperature data
 df.historical <- df.historical %>%
@@ -1155,7 +1149,8 @@ future.water.annual <- future.water %>%
          cumulative_above_0 = gdd_wtr_0c,
          cumulative_above_5 = gdd_wtr_5c,
          cumulative_above_10 = gdd_wtr_10c) %>%
-  mutate(log_schmidt = log(schmidt + .00001))
+  mutate(log_schmidt = log(schmidt + .00001),
+         year = as.numeric(year))
 
 # Create monthly data
 future.water.monthly <- future.water %>%
@@ -1193,9 +1188,11 @@ future.water.monthly <- future.water %>%
                               "9"  = "sep",
                               "10" = "oct",
                               "11" = "nov")) %>%
-  filter(date > "2013-12-31")
+  filter(date > "2013-12-31") %>%
+  mutate(year  = as.numeric(as.character(year)),
+         month = as.numeric(as.character(month)))
 
-# Reformat monthly data
+ # Reformat monthly data
 future.water.monthly <- future.water.monthly %>%
   group_by(site_id, month) %>%
   mutate(max_bot_z   = scale(max_bot),
@@ -1204,20 +1201,7 @@ future.water.monthly <- future.water.monthly %>%
          mean_surf_z = scale(mean_surf)) %>%
   ungroup() %>%
   mutate(layer_diff = mean_surf - mean_bot,
-         water_quad_temp = mean_surf^2,
-         season = fct_collapse(month,
-                               "winter" = "12",
-                               "winter" = "1",
-                               "winter" = "2",
-                               "spring" = "3",
-                               "spring" = "4",
-                               "spring" = "5",
-                               "summer" = "6",
-                               "summer" = "7",
-                               "summer" = "8",
-                               "fall"   = "9",
-                               "fall"   = "10",
-                               "fall"   = "11"))
+         water_quad_temp = mean_surf^2)
 
 # Perform PCA to collapse collinear covariates into a single variable (water_pca)
 water.pr <- future.water.monthly %>%
@@ -1228,6 +1212,9 @@ water.pr <- future.water.monthly %>%
 water_pca <- future.water.monthly %>%
   dplyr::select(max_surf, mean_surf, mean_bot) %>%
   as.matrix() %*% water.pr$rotation[,1]
+
+# Change "anti-temperature" to temperature
+water_pca <- (water_pca * -1)
 
 # Add PCA results into monthly water temperature data
 future.water.monthly <- future.water.monthly %>%
@@ -1586,7 +1573,9 @@ future.air.2081 <- future.air.2081 %>%
 
 # Merge future air temperature data
 future.air <- future.air.2041 %>%
-  rbind(., future.air.2081)
+  rbind(., future.air.2081) %>%
+  mutate(year  = as.numeric(year),
+         month = as.numeric(month))
 
 # Remove unnecessary dataframes
 rm(seq.2041, seq.2081, seq.month, seq.lat, seq.long,
@@ -1608,7 +1597,8 @@ air.nearest <- apply(gDistance(site.sp, localities.sp, byid = TRUE), 2, which.mi
 # Add unique identifier to air temperature data
 future.air <- future.air %>%
   left_join(localities, by = c("lat", "long")) %>%
-  mutate(year = as.numeric(year))
+  mutate(year  = as.numeric(year),
+         month = as.numeric(month))
 
 # Add unique identifier to site.id
 site.id$id <- as.vector(air.nearest)
@@ -1617,7 +1607,7 @@ site.id$id <- as.vector(air.nearest)
 df.future <- df.future %>%
   left_join(site.id[,c("site", "id")], by = "site") %>%
   mutate(year  = as.numeric(year),
-         month = as.numeric(month)) %>%
+         month = as.numeric(month)) %>% ####
   left_join(future.air[,c("mean_air", "min_air", "max_air",
                           "precip", "year", "month", "id")],
             by = c("year", "month", "id")) %>%
@@ -1741,7 +1731,7 @@ ecoregions <- full_join(ecoregions.mn, ecoregions.wi) %>%
   dplyr::select(us_l4code, us_l4name, state_name, id) %>%
   rename(l4_code = us_l4code,
          l4_name = us_l4name,
-         state = state_name) %>%
+         state   = state_name) %>%
   mutate(id = as.numeric(id))
 
 # Add unique identifier and ecoregions to historical dataframe
@@ -1767,8 +1757,8 @@ write.csv(df.future, "data/processed/df_future.csv", row.names = FALSE)
 # Remove unnecessary dataframes
 rm(ecoregions, ecoregions.sp,
    ecoregions.mn, ecoregions.wi,
-   census, site.id,
-   df.spatial, df.future)
+   census.mn, census.wi, df.census, census,
+   site.id, df.spatial, df.future)
 ```
 
 ### Step 11: Add snowfall data
