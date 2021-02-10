@@ -1,7 +1,7 @@
 ---
 title: "prepare models"
 author: "fishkill friends"
-date: "2021/01/05"
+date: "2021/02/04"
 output: github_document
 ---
 
@@ -23,7 +23,6 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/p
 
 # Load historical data
 df.historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
-#df.future     <- read.csv(file = "df_future.csv", head = TRUE, sep = ",")
 ```
 
 ### Step 2: Partition and scale data
@@ -69,8 +68,8 @@ set.seed(406)
 
 # Creates series of training partitions
 in.training    <- createDataPartition(df.historical$summerkill, p = .75, list = FALSE)
-in.training.mn <- createDataPartition(mn$summerkill, p = .75, list = FALSE)
-in.training.wi <- createDataPartition(wi$summerkill, p = .75, list = FALSE)
+in.training.mn <- createDataPartition(mn$summerkill,            p = .75, list = FALSE)
+in.training.wi <- createDataPartition(wi$summerkill,            p = .75, list = FALSE)
 
 # Partition training data
 training    <- df.historical  %>%
@@ -93,17 +92,11 @@ testing.wi  <- df.historical %>%
   slice(-in.training.wi)
 
 # Scale data
-pre.proc.values    <- preProcess(training, method = c("center", "scale"))
+pre.proc.values    <- preProcess(training,    method = c("center", "scale"))
 
 pre.proc.values.mn <- preProcess(training.mn, method = c("center", "scale"))
 
-#Warning in preProcess.default(training, method = c("center", "scale")) :
-#  These variables have zero variances: lepisosteidae, amiidae, cottoidae, gasterosteidae, gobiidae
-
 pre.proc.values.wi <- preProcess(training.wi, method = c("center", "scale"))
-
-#Warning in preProcess.default(training, method = c("center", "scale")) :
-#  These variables have zero variances: lepisosteidae, amiidae, cottoidae, gasterosteidae, gobiidae
 
 # Create training set
 training    <- predict(pre.proc.values, training) %>%
@@ -137,17 +130,18 @@ testing.wi <- predict(pre.proc.values.wi, testing.wi) %>%
 # Change working directory
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
 
-# Export data
+# Export training data
 write_csv(training,    "training.csv")
 write_csv(training.mn, "training_mn.csv")
 write_csv(training.wi, "training_wi.csv")
 
+# Export testing data
 write_csv(testing,    "testing.csv")
 write_csv(testing.mn, "testing_mn.csv")
 write_csv(testing.wi, "testing_wi.csv")
 
 # Remove dataframes
-rm(df.historical,
+rm(df.historical, mn, wi,
    in.training, in.training.mn, in.training.wi,
    pre.proc.values, pre.proc.values.mn, pre.proc.values.wi,
    testing, testing.mn, testing.wi,
