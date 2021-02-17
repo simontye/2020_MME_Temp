@@ -5,6 +5,8 @@ date: "2020/11/10"
 output: github_document
 ---
 
+### ### Error on Line ~150 ### ###
+
 ### Background
 
 Candidate models are compared in terms of their coefficients to check for sensitivity of the coefficients to modeling choices, and their out-of-sample predictive performance, assessed using logloss and ROC-AUC. This is the same workflow as Till et al. (2019) except that I switched the file conversion from tibble to dataframe because of parsing errors.
@@ -33,7 +35,7 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/m
 
 # Load data
 training <- read.csv(file = "training.csv", head = TRUE, sep = ",")
-testing  <- read.csv(file = "testing.csv", head = TRUE, sep = ",")
+testing  <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
 
 # Reformat training data
 training <- training %>%
@@ -43,7 +45,7 @@ training <- training %>%
          season       = as.character(season),
          summerkill   = as.factor(summerkill),
          ice_duration = as.double(ice_duration),
-         pop_2010     = as.numeric(pop_2010))
+         population   = as.numeric(population))
 
 # Load testing data
 testing <- testing %>%
@@ -53,7 +55,7 @@ testing <- testing %>%
          season       = as.character(season),
          summerkill   = as.factor(summerkill),
          ice_duration = as.double(ice_duration),
-         pop_2010     = as.numeric(pop_2010))
+         population   = as.numeric(population))
 ```
 
 ### Step 2: Load models
@@ -62,54 +64,71 @@ testing <- testing %>%
 # Change working directory
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models/assessment") 
 
+# Load loads
+w1e    <- readRDS("logistic_w1e.rds")
+w1s    <- readRDS("logistic_w1s.rds")
+w1se   <- readRDS("logistic_w1se.rds")
+a1e    <- readRDS("logistic_a1e.rds")
+a1s    <- readRDS("logistic_a1s.rds")
+a1se   <- readRDS("logistic_a1se.rds")
+w2e    <- readRDS("logistic_w2e.rds")
+w2s    <- readRDS("logistic_w2s.rds")
+w2se   <- readRDS("logistic_w2se.rds")
+a2e    <- readRDS("logistic_a2e.rds")
+a2s    <- readRDS("logistic_a2s.rds")
+a2se   <- readRDS("logistic_a2se.rds")
+w1e.mn <- readRDS("logistic_w1e_mn.rds")
+w1e.wi <- readRDS("logistic_w1e_wi.rds")
+a1e.mn <- readRDS("logistic_a1e_mn.rds")
+a1e.wi <- readRDS("logistic_a1e_wi.rds")
+w2e.mn <- readRDS("logistic_w2e_mn.rds")
+w2e.wi <- readRDS("logistic_w2e_wi.rds")
+a2e.mn <- readRDS("logistic_a2e_mn.rds")
+a2e.wi <- readRDS("logistic_a2e_wi.rds")
+
+# Summary of water models
+summary(w1e )
+summary(w1s )
+summary(w1se)
+summary(w2e ) ###
+summary(w2s )
+summary(w2se)
+
+# Summary of air models
+summary(a1e )
+summary(a1s )
+summary(a1se)
+summary(a2e )
+summary(a2s )
+summary(a2se) ###
+
+# Summary of state-specific models
+summary(w1e.mn) #
+summary(a1e.mn) #
+summary(w2e.mn) #
+summary(a2e.mn) #
+summary(w1e.wi)
+summary(a1e.wi)
+summary(w2e.wi) ###
+summary(a2e.wi)
+
 # Save file names
 model_names <- list.files()
 
-##########################################################################################
-### There is an error that I can't figure out here. When trying to combine all of the
-### .rds files from the models using code from the Till workflow (see Attempt 1), it gives this message:
-
-### Error: 'lasso_a1_logloss_downsampled.rdsMapEnv' is not an exported object from 'namespace:maps'
-
-### I tried just removing this .rds file, and the same error arises for each file. Is the
-### .rdsMapEnv file a hidden and messing it up? I can't find anything about this online
-
-### Using a different method to combine the .rds files (see Attempt 2), I ran into this message:
-
-### Error in rbindlist(dat_list, fill = TRUE) : 
-###   Class attribute on column 1 of item 9 does not match with column 1 of item 1.
-
-### I found some code that forces the column attributes to match (not ideal; see Attempt 3).
-### This gives the following warning:
-
-### Warning messages:
-### 1: In `[<-`(`*tmp*`, rows, value = new("glmerMod", resp = new("glmResp",  :
-###   implicit list embedding of S4 objects is deprecated
-### 2: In `[<-`(`*tmp*`, rows, value = new("glmerMod", resp = new("glmResp",  :
-###   implicit list embedding of S4 objects is deprecated
-### 3: In `[<-`(`*tmp*`, rows, value = new("glmerMod", resp = new("glmResp",  :
-###   implicit list embedding of S4 objects is deprecated
-### 4: In `[<-`(`*tmp*`, rows, value = new("glmerMod", resp = new("glmResp",  :
-###   implicit list embedding of S4 objects is deprecated
-
-##########################################################################################
-
-### Attempt 1
+### Method 1 (Original)
 # Load models
-#all_models <- model_names %>%
-#  map(., ~read_rds(.))
+all_models <- model_names %>%
+  map(., ~read_rds(.))
 
-# Error: 'lasso_a1_logloss_downsampled.rdsMapEnv' is not an exported object from 'namespace:maps'
-
-### Attempt 2
-#all_models <- list.files(pattern = ".RDS") %>%
+#### Method 2
+#all_models <- list.files(pattern = ".rds$") %>%
 #  map(readRDS) %>% 
 #  bind_rows()
 
-### Attempt 3
-model_names = list.files(path = '.', pattern = '*.rds$')
-all_models = lapply(model_names, function (x) data.table(readRDS(x)))
-#all_models = ldply(dat_list, data.frame)
+#### Method 3 (working, I think)
+#model_names = list.files(path = '.', pattern = '*.rds$')
+#all_models = lapply(model_names, function (x) data.table(readRDS(x)))
+##all_models = ldply(dat_list, data.frame)
 
 # Black magic
 all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."),
@@ -128,9 +147,12 @@ predict_route <- function(model, newdata) {
   } else {predict(model, newdata, type = "response")}
 }
 
-# Black magic
+# Black magic (see error below)
 all_models <- all_models %>%
   mutate(fit_test = map(model, predict_route, newdata = testing))
+
+### Error in UseMethod("mutate_") : 
+###   no applicable method for 'mutate_' applied to an object of class "list"
 
 # Calculate logloss and auc. This can be made more concise w/ map() (from Till)
 auc <- rep(NA, nrow(all_models))

@@ -7,7 +7,7 @@ output: github_document
 
 ### Background
 
-Models are fit to the training data from `02_prepare_models` via four primary model families listed below. This is the same workflow as Till et al. (2019) except that I switched the file conversion from tibble to dataframe because of parsing errors.
+Models are fit to the training data from `02_prepare_models` via four primary model families listed below. This is the same workflow as Till et al. (2019) except that I switched the file conversion from tibble to dataframe because of parsing errors (on my end).
 
 1. Logistic regression
 2. Ridge regression
@@ -39,11 +39,7 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/m
 
 # Load data
 training    <- read.csv(file = "training.csv", head = TRUE, sep = ",")
-training.mn <- read.csv(file = "training_mn.csv", head = TRUE, sep = ",")
-training.wi <- read.csv(file = "training_wi.csv", head = TRUE, sep = ",")
 testing     <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
-testing.mn  <- read.csv(file = "testing_mn.csv",  head = TRUE, sep = ",")
-testing.wi  <- read.csv(file = "testing_wi.csv",  head = TRUE, sep = ",")
 
 # Reformat training data
 training <- training %>%
@@ -56,57 +52,8 @@ training <- training %>%
          population   = as.numeric(population),
          state        = as.character(state),
          l3_code      = as.character(l3_code))
-
 # Reformat testing data
 testing <- testing %>%
-  mutate(site_id      = as.character(site_id),
-         year         = as.character(year),
-         month        = as.character(month),
-         season       = as.character(season),
-         summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration),
-         population   = as.numeric(population),
-         state        = as.character(state),
-         l3_code      = as.character(l3_code))
-
-# Reformat training data
-training.mn <- training.mn %>%
-  mutate(site_id      = as.character(site_id),
-         year         = as.character(year),
-         month        = as.character(month),
-         season       = as.character(season),
-         summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration),
-         population   = as.numeric(population),
-         state        = as.character(state),
-         l3_code      = as.character(l3_code))
-
-# Reformat testing data
-testing.mn <- testing.mn %>%
-  mutate(site_id      = as.character(site_id),
-         year         = as.character(year),
-         month        = as.character(month),
-         season       = as.character(season),
-         summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration),
-         population   = as.numeric(population),
-         state        = as.character(state),
-         l3_code      = as.character(l3_code))
-
-# Reformat training data
-training.wi <- training.wi %>%
-  mutate(site_id      = as.character(site_id),
-         year         = as.character(year),
-         month        = as.character(month),
-         season       = as.character(season),
-         summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration),
-         population   = as.numeric(population),
-         state        = as.character(state),
-         l3_code      = as.character(l3_code))
-
-# Reformat testing data
-testing.wi <- testing.wi %>%
   mutate(site_id      = as.character(site_id),
          year         = as.character(year),
          month        = as.character(month),
@@ -120,116 +67,16 @@ testing.wi <- testing.wi %>%
 
 ### Step 2: Specify variable sets
 
-The first generalized model uses a subset of variables selected based on their presumed effect and not being mutually non-correlated (at least strongly). Throughout the remaining code, models that are named 1) by an "a" or "w" for air and water, respectively, 2) "1" or "2" for simple or complex model, respectively, and 3) "e", "s", or "se" for ecoregion, state, or ecoregion and state, respectively.
+New models with mean_z temps
 
-```{r: Simple generalized model}
-# Simple generalized model for water temperature (ecoregion)
-w1e <- summerkill ~ long + lat + season + population +
-  variance_after_ice_30 + variance_after_ice_60 +
-  log_schmidt + cumulative_above_10 + ice_duration +
-  water_pca + l3_code
+```{r: New generalized model}
+# New generalized model for water temperature (state)
+w1 <- summerkill ~ long + lat + season + population +
+  mean_surf_z + water_pca + state
 
-# Simple generalized model for air temperature (ecoregion)
-a1e <- summerkill ~ long + lat + season + population +
-  air_pca + l3_code
-
-# Simple generalized model for water temperature (state)
-w1s <- summerkill ~ long + lat + season + population +
-  variance_after_ice_30 + variance_after_ice_60 +
-  log_schmidt + cumulative_above_10 + ice_duration +
-  water_pca + state
-
-# Simple generalized model for air temperature (state)
-a1s <- summerkill ~ long + lat + season + population +
-  air_pca + state
-
-# Simple generalized model for water temperature (state and ecoregion)
-w1se <- summerkill ~ long + lat + season + population +
-  variance_after_ice_30 + variance_after_ice_60 +
-  log_schmidt + cumulative_above_10 + ice_duration +
-  water_pca + state + l3_code
-
-# Simple generalized model for air temperature (state and ecoregion)
-a1se <- summerkill ~ long + lat + season + population +
-  air_pca + state + l3_code
-```
-
-The second model involves all covariates except site_id, which we treat separately because of the number of levels.
-
-```{r: Complex generalized model}
-# Complex generalized model for water temperature (ecoregion)
-w2e <- summerkill ~ long + lat + season + population +
-  variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-  cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
-  max_bot + max_surf + mean_bot + mean_surf +
-  max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
-  ice_duration + layer_diff + water_quad_temp + peak_temp +
-  l3_code
-
-# Complex generalized model for air temperature (ecoregion)
-a2e <- summerkill ~ long + lat + season + population +
-  min_air + mean_air + max_air + 
-  min_air_z + mean_air_z + max_air_z +
-  air_quad_temp + l3_code
-
-# Complex generalized model for water temperature (state)
-w2s <- summerkill ~ long + lat + season + population +
-  variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-  cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
-  max_bot + max_surf + mean_bot + mean_surf +
-  max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
-  ice_duration + layer_diff + water_quad_temp + peak_temp +
-  state
-
-# Complex generalized model for air temperature (state)
-a2s <- summerkill ~ long + lat + season + population +
-  min_air + mean_air + max_air + 
-  min_air_z + mean_air_z + max_air_z +
-  air_quad_temp + state
-
-# Complex generalized model for water temperature (state and ecoregion)
-w2se <- summerkill ~ long + lat + season + population +
-  variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-  cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
-  max_bot + max_surf + mean_bot + mean_surf +
-  max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
-  ice_duration + layer_diff + water_quad_temp + peak_temp +
-  state + l3_code
-
-# Complex generalized model for air temperature (state and ecoregion)
-a2se <- summerkill ~ long + lat + season + population +
-  min_air + mean_air + max_air + 
-  min_air_z + mean_air_z + max_air_z +
-  air_quad_temp + state + l3_code
-```
-
-These are for the simple and complex models by state. For now, ecoregion (l3_code) is included.
-
-```{r: Simple generalized model}
-# Simple generalized model for water temperature (ecoregion)
-w1e.state <- summerkill ~ long + lat + season + population +
-  variance_after_ice_30 + variance_after_ice_60 +
-  log_schmidt + cumulative_above_10 + ice_duration +
-  water_pca + l3_code
-
-# Simple generalized model for air temperature (ecoregion)
-a1e.state <- summerkill ~ long + lat + season + population +
-  air_pca + l3_code
-
-# Complex generalized model for water temperature (ecoregion)
-w2e.state <- summerkill ~ long + lat + season + population +
-  variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-  cumulative_above_10 + cumulative_above_5 + cumulative_above_0 +
-  max_bot + max_surf + mean_bot + mean_surf +
-  max_bot_z + max_surf_z + mean_bot_z + mean_surf_z +
-  ice_duration + layer_diff + water_quad_temp + peak_temp +
-  l3_code
-
-# Complex generalized model for air temperature (ecoregion)
-a2e.state <- summerkill ~ long + lat + season + population +
-  min_air + mean_air + max_air + 
-  min_air_z + mean_air_z + max_air_z +
-  air_quad_temp + l3_code
+# New generalized model for air temperature (state)
+a1 <- summerkill ~ long + lat + season + population +
+  mean_air_z + air_pca + state
 ```
 
 ### Step 3: Set up parameters for lambda selection for ridge and lasso regressions
@@ -237,14 +84,14 @@ a2e.state <- summerkill ~ long + lat + season + population +
 Black magic.
 
 ```{r: Set up parameters for ridge and lasso models}
-# No down sampling
+# No downsampling
 control_logloss <- trainControl(method = "repeatedcv",
                                 number = 5,
                                 repeats = 5,
                                 summaryFunction = mnLogLoss,
                                 classProbs = TRUE)
 
-# Down sampling
+# Downsampling
 control_logloss_ds <- trainControl(method = "repeatedcv",
                                    number = 5,
                                    repeats = 5,
@@ -255,224 +102,35 @@ control_logloss_ds <- trainControl(method = "repeatedcv",
 
 ### Step 4: Logistic regressions
 
-Simple generalized models (a1/w1 + e/s/se)
+New generalized models
 
 ```{r: Simple logistic regression}
 # Set seed
 set.seed(736)
 
-### Simple water models
-
-# Simple generalized model for water temperature
-logistic_w1e <- glm(w1e, training, family = "binomial")
-
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+# New generalized model for air temperature
+logistic_a1 <- glm(a1, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_w1e <- step(logistic_w1e)
+#logistic_a1 <- step(logistic_a1)
 
-# Simple generalized model for water temperatures
-logistic_w1s <- glm(w1s, training, family = "binomial")
-
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
+# New generalized model for water temperatures
+logistic_w1 <- glm(w1, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_w1s <- step(logistic_w1s)
+#logistic_w1 <- step(logistic_w1)
 
-# Simple generalized model for air temperature
-logistic_w1se <- glm(w1se, training, family = "binomial")
-
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
-
-# Stepwise model comparisons by AIC
-logistic_w1se <- step(logistic_w1se)
-
-### Simple air models
-
-# Simple generalized model for water temperature
-logistic_a1e <- glm(a1e, training, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a1e <- step(logistic_a1e)
-
-# Simple generalized model for water temperature
-logistic_a1s <- glm(a1s, training, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a1s <- step(logistic_a1s)
-
-# Simple generalized model for air temperature
-logistic_a1se <- glm(a1se, training, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a1se <- step(logistic_a1se)
-
-# Save models
-write_rds(logistic_w1e,  "assessment/logistic_w1e.rds")
-write_rds(logistic_w1s,  "assessment/logistic_w1s.rds")
-write_rds(logistic_w1se, "assessment/logistic_w1se.rds")
-write_rds(logistic_a1e,  "assessment/logistic_a1e.rds")
-write_rds(logistic_a1s,  "assessment/logistic_a1s.rds")
-write_rds(logistic_a1se, "assessment/logistic_a1se.rds")
+# Save models 
+write_rds(logistic_a1, "assessment/logistic_a1.rds")
+write_rds(logistic_w1, "assessment/logistic_w1.rds")
 
 # Remove models
-rm(logistic_w1e.rds, logistic_w1s.rds,
-   logistic_w1se.rds, logistic_a1e.rds,
-   logistic_a1s.rds, logistic_a1se.rds)
-```
-
-Complex generalized models (a2/w2 + e/s/se)
-
-```{r: Complex logistic regression}
-# Set seed
-set.seed(306)
-
-### Complex water models
-
-# Complex generalized model for water temperature
-logistic_w2e <- glm(w2e, training, family = "binomial")
-
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
-
-# Stepwise model comparisons by AIC
-logistic_w2e <- step(logistic_w2e)
-
-# Complex generalized model for water temperature
-logistic_w2s <- glm(w2s, training, family = "binomial")
-
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
-
-# Stepwise model comparisons by AIC
-logistic_w2s <- step(logistic_w2s)
-
-# Complex generalized model for air temperature
-logistic_w2se <- glm(w1se, training, family = "binomial")
-
-### Warning message:
-### glm.fit: fitted probabilities numerically 0 or 1 occurred 
-
-# Stepwise model comparisons by AIC
-logistic_w2se <- step(logistic_w2se)
-
-### Complex air models
-
-# Complex generalized model for water temperature
-logistic_a2e <- glm(a2e, training, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a2e <- step(logistic_a2e)
-
-# Complex generalized model for water temperature
-logistic_a2s <- glm(a2s, training, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a2s <- step(logistic_a2s)
-
-# Complex generalized model for air temperature
-logistic_a2se <- glm(a2se, training, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a2se <- step(logistic_a2se)
-
-# Save models
-write_rds(logistic_w2e,  "assessment/logistic_w2e.rds")
-write_rds(logistic_w2s,  "assessment/logistic_w2s.rds")
-write_rds(logistic_w2se, "assessment/logistic_w2se.rds")
-write_rds(logistic_a2e,  "assessment/logistic_a2e.rds")
-write_rds(logistic_a2s,  "assessment/logistic_a2s.rds")
-write_rds(logistic_a2se, "assessment/logistic_a2se.rds")
-
-# Remove models
-rm(logistic_w2e.rds,  logistic_w2s.rds,
-   logistic_w2se.rds, logistic_a2e.rds,
-   logistic_a2s.rds,  logistic_a2se.rds)
-```
-
-State-specific models
-
-```{r: Complex logistic regression}
-# Set seed
-set.seed(306)
-
-### MN models
-
-# Simple generalized model for water temperature
-logistic_w1e.mn <- glm(w1e.state, training.mn, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_w1e.mn <- step(logistic_w1e.mn)
-
-# Simple generalized model for air temperature
-logistic_a1e.mn <- glm(a1e.state, training.mn, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a1e.mn <- step(logistic_a1s.mn)
-
-# Complex generalized model for water temperature
-logistic_w2e.mn <- glm(w2e.state, training.mn, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_w2e.mn <- step(logistic_w2e.mn)
-
-# Complex generalized model for air temperature
-logistic_a2e.mn <- glm(a2e.state, training.mn, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a2e.mn <- step(logistic_a2e.mn)
-
-### WI models
-
-# Simple generalized model for water temperature
-logistic_w1e.wi <- glm(w1e.state, training.wi, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_w1e.wi <- step(logistic_w1e.wi)
-
-# Simple generalized model for air temperature
-logistic_a1e.wi <- glm(a1e.state, training.wi, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a1e.wi <- step(logistic_a1s.wi)
-
-# Complex generalized model for water temperature
-logistic_w2e.wi <- glm(w2e.state, training.wi, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_w2e.wi <- step(logistic_w2e.wi)
-
-# Complex generalized model for air temperature
-logistic_a2e.wi <- glm(a2e.state, training.wi, family = "binomial")
-
-# Stepwise model comparisons by AIC
-logistic_a2e.wi <- step(logistic_a2e.wi)
-
-# Save models
-write_rds(logistic_w1e.mn, "assessment/logistic_w1e_mn.rds")
-write_rds(logistic_a1e.mn, "assessment/logistic_a1e_mn.rds")
-write_rds(logistic_w2e.mn, "assessment/logistic_w2e_mn.rds")
-write_rds(logistic_a2e.mn, "assessment/logistic_a2e_mn.rds")
-write_rds(logistic_w1e.wi, "assessment/logistic_w1e_wi.rds")
-write_rds(logistic_a1e.wi, "assessment/logistic_a1e_wi.rds")
-write_rds(logistic_w2e.wi, "assessment/logistic_w2e_wi.rds")
-write_rds(logistic_a2e.wi, "assessment/logistic_a2e_wi.rds")
-
-# Remove models
-rm(logistic_w1e.mn, logistic_a1e.mn,
-   logistic_w2e.mn, logistic_a2e.mn,
-   logistic_w1e.wi, logistic_a1e.wi,
-   logistic_w2e.wi, logistic_a2e.wi)
+rm(logistic_a1, logistic_w1)
 ```
 
 ### Step 5: Lasso regressions
 
 This fits LASSO models with many differenct lambdas, utilizing a 5-fold CV scheme, repeated five times, on the training data.
-
-First set of models with logloss and without downsampling (w1 and a1). Note that this suffers from unidentifiability in lambda (from Till).
 
 ```{r: First lasso regression w/o downsampling}
 # Black magic
@@ -485,54 +143,48 @@ par_grid <-  expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
 # Set seed
 set.seed(685)
 
-# First lasso model for water temperature
-lasso_w1_logloss <- train(w1,
-                     data = training, 
-                     method = "glmnet", 
-                     metric = "mnLogLoss",
-                     tuneGrid = par_grid,
-                     trControl = control_logloss)
-
-### Warning messages:
-### 1: In train.default(x, y, weights = w, ...) :
-###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
-### 2: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 8 (<-localhost:11023)
-### 3: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 7 (<-localhost:11023)
-### 4: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 6 (<-localhost:11023)
-### 5: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 5 (<-localhost:11023)
-### 6: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 4 (<-localhost:11023)
-### 7: In .Internal(gc(verbose, reset, full)) :
-###   closing unused connection 3 (<-localhost:11023)
-
-# First lasso model for air temperature
+# Lasso model without downsampling for air temperature
 lasso_a1_logloss <- train(a1,
-                     data = training, 
-                     method = "glmnet", 
-                     metric = "mnLogLoss",
-                     tuneGrid = par_grid,
-                     trControl = control_logloss)
+                          data = training, 
+                          method = "glmnet", 
+                          metric = "mnLogLoss",
+                          tuneGrid = par_grid,
+                          trControl = control_logloss)
 
-### Warning message:
-### In train.default(x, y, weights = w, ...) :
-###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
+# Lasso model without downsampling for water temperature
+lasso_w1_logloss <- train(w1,
+                          data = training, 
+                          method = "glmnet", 
+                          metric = "mnLogLoss",
+                          tuneGrid = par_grid,
+                          trControl = control_logloss)
+
+
+
+#
+cols_reg = c('pce', 'pop', 'psavert', 'uempmed', 'unemploy')
+
+dummies <- dummyVars(unemploy ~ ., data = dat[,cols_reg])
+
+train_dummies = predict(dummies, newdata = train[,cols_reg])
+
+test_dummies = predict(dummies, newdata = test[,cols_reg])
+
+print(dim(train_dummies)); print(dim(test_dummies))
+
 
 # Black magic
 stopCluster(cl)
 
 # Save models
-write_rds(lasso_w1_logloss, "assessment/lasso_w1_logloss.rds")
 write_rds(lasso_a1_logloss, "assessment/lasso_a1_logloss.rds")
+write_rds(lasso_w1_logloss, "assessment/lasso_w1_logloss.rds")
 
 # Remove models
-rm(lasso_w1_logloss, lasso_a1_logloss)
+rm(lasso_a1_logloss, lasso_w1_logloss)
 ```
 
-First set of models with logloss and downsampling (w1 and a1).
+New models with logloss and downsampling.
 
 ```{r: First lasso regression w/ downsampling}
 # Black magic
@@ -547,15 +199,7 @@ par_grid <-  expand.grid(alpha = 1, lambda = 10^seq(-3.5, -1.3, length = 8))
 # Set seed
 set.seed(336)
 
-# First lasso model for water temperature
-lasso_w1_logloss_downsampled <- train(w1, 
-                                      data = training, 
-                                      method = "glmnet", 
-                                      metric = "logLoss",
-                                      tuneGrid = par_grid,
-                                      trControl = control_logloss_ds)
-
-# First lasso model for air temperature
+# Lasso model with downsampling air temperature
 lasso_a1_logloss_downsampled <- train(a1, 
                                       data = training, 
                                       method = "glmnet", 
@@ -563,120 +207,28 @@ lasso_a1_logloss_downsampled <- train(a1,
                                       tuneGrid = par_grid,
                                       trControl = control_logloss_ds)
 
-# Black magic
-stopCluster(cl)
-
-# Save models
-write_rds(lasso_w1_logloss_downsampled, "assessment/lasso_w1_logloss_downsampled.rds")
-write_rds(lasso_a1_logloss_downsampled, "assessment/lasso_a1_logloss_downsampled.rds")
-
-# Remove models
-rm(lasso_w1_logloss_downsampled, lasso_a1_logloss_downsampled)
-```
-
-Second set of models with logloss and downsampling (w2 and a2). Note that this suffers from unidentifiability in lambda (from Till).
-
-```{r: Second lasso regression w/o downsampling}
-# Black magic
-cl <- makePSOCKcluster(6)
-
-# Black magic
-registerDoParallel(cl)
-
-# Black magic (was hashed out in Till)
-#par_grid <-  expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
-
-# Set seed
-set.seed(192)
-
-# Second lasso model for water temperature
-lasso_w2_logloss <- train(w2, 
-                     data = training, 
-                     method = "glmnet", 
-                     metric = "mnLogLoss",
-                     #tuneGrid = par_grid,
-                     trControl = control_logloss)
-
-### Warning message:
-### In train.default(x, y, weights = w, ...) :
-###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
-
-# Second lasso model for air temperature
-lasso_a2_logloss <- train(a2, 
-                     data = training, 
-                     method = "glmnet", 
-                     metric = "mnLogLoss",
-                     #tuneGrid = par_grid,
-                     trControl = control_logloss)
-
-### Warning message:
-### In train.default(x, y, weights = w, ...) :
-###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
-
-# Black magic
-stopCluster(cl)
-
-# Save models
-write_rds(lasso_w2_logloss, "assessment/lasso_w2_logloss.rds")
-write_rds(lasso_a2_logloss, "assessment/lasso_a2_logloss.rds")
-
-# Remove models
-rm(lasso_w2_logloss, lasso_a2_logloss)
-```
-
-Second set of models with logloss and downsampling (w2 and a2).
-
-```{r: Second lasso regression w/ downsampling}
-# Black magic
-cl <- makePSOCKcluster(6)
-registerDoParallel(cl)
-
-# Black magic (was hashed out in Till)
-#par_grid <-  expand.grid(alpha = 1,
-                        # lambda = seq(1.5e-6, 1e-5, 
-                        #              length.out = 6))
-
-# Set seed
-set.seed(697)
-
-# Second lasso model for water temperature
-lasso_w2_logloss_downsampled <- train(w2, 
+# Lasso model with downsampling for water temperature
+lasso_w1_logloss_downsampled <- train(w1, 
                                       data = training, 
                                       method = "glmnet", 
-                                      metric = "mnLogLoss",
-                                      #tuneGrid = par_grid,
+                                      metric = "logLoss",
+                                      tuneGrid = par_grid,
                                       trControl = control_logloss_ds)
-
-### Warning message:
-### In train.default(x, y, weights = w, ...) :
-###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
-
-# Second lasso model for water temperature
-lasso_a2_logloss_downsampled <- train(a2, 
-                                      data = training, 
-                                      method = "glmnet", 
-                                      metric = "mnLogLoss",
-                                      #tuneGrid = par_grid,
-                                      trControl = control_logloss_ds)
-
-### Warning message:
-### In train.default(x, y, weights = w, ...) :
-###   The metric "mnLogLoss" was not in the result set. logLoss will be used instead.
 
 # Black magic
 stopCluster(cl)
 
 # Save models
-write_rds(lasso_w2_logloss_downsampled, "assessment/lasso_w2_logloss_downsampled.rds")
-write_rds(lasso_a2_logloss_downsampled, "assessment/lasso_a2_logloss_downsampled.rds")
+write_rds(lasso_a1_logloss_ds, "assessment/lasso_a1_logloss_ds.rds")
+write_rds(lasso_w1_logloss_ds, "assessment/lasso_w1_logloss_ds.rds")
 
 # Remove models
-rm(lasso_w2_logloss_downsampled, lasso_a2_logloss_downsampled)
+rm(lasso_a1_logloss_ds, lasso_w1_logloss_ds)
 ```
 
 ### Step 6: Ridge logistic regressions
 
-First set of models with logloss and without downsampling (w1 and a1). Note that this suffers from unidentifiability in lambda (from Till).
+New models with logloss and without downsampling.
 
 ```{r: First ridge regression w/o downsampling}
 # Black magic
@@ -691,7 +243,7 @@ registerDoParallel(cl)
 # Set seed
 set.seed(475)
 
-# First ridge model for water temperature
+# Ridge model without downsampling for water temperature
 ridge_w1_logloss <- train(w1, 
                           data = training, 
                           method = "glmnet",
@@ -699,7 +251,7 @@ ridge_w1_logloss <- train(w1,
                           tuneGrid = par_grid,
                           trControl = control_logloss)
 
-# First ridge model for water temperature
+# Ridge model without downsampling for water temperature
 ridge_a1_logloss <- train(a1, 
                           data = training, 
                           method = "glmnet",
@@ -710,14 +262,14 @@ ridge_a1_logloss <- train(a1,
 stopCluster(cl)
 
 # Save models
-write_rds(ridge_w1_logloss, "assessment/ridge_w1_logloss.rds")
 write_rds(ridge_a1_logloss, "assessment/ridge_a1_logloss.rds")
+write_rds(ridge_w1_logloss, "assessment/ridge_w1_logloss.rds")
 
 # Remove models
-rm(ridge_w1_logloss, ridge_a1_logloss)
+rm(ridge_a1_logloss, ridge_w1_logloss)
 ```
 
-First set of models with logloss and downsampling (w1 and a1).
+New models with logloss and downsampling.
 
 ```{r: First ridge regression w/ downsampling}
 # Black magic
@@ -732,15 +284,7 @@ registerDoParallel(cl)
 # Sed seed
 set.seed(284)
 
-# First ridge model for water temperature
-ridge_w1_logloss_downsampled <- train(w1, 
-                                      data = training, 
-                                      method = "glmnet",
-                                      metric = "logLoss",
-                                      tuneGrid = par_grid,
-                                      trControl = control_logloss_ds)
-
-# First ridge model for air temperature
+# Ridge model with downsampling for air temperature
 ridge_a1_logloss_downsampled <- train(a1, 
                                       data = training, 
                                       method = "glmnet",
@@ -748,157 +292,83 @@ ridge_a1_logloss_downsampled <- train(a1,
                                       tuneGrid = par_grid,
                                       trControl = control_logloss_ds)
 
-# Black magic
-stopCluster(cl)
+# Run 
+logistic_w1 <- glm(w1, training, family = "binomial")
 
-# Save models
-write_rds(ridge_w1_logloss_downsampled, "assessment/ridge_w1_logloss_downsampled.rds")
-write_rds(ridge_a1_logloss_downsampled, "assessment/ridge_a1_logloss_downsampled.rds")
 
-# Remove models
-rm(ridge_w1_logloss_downsampled, ridge_a1_logloss_downsampled)
-```
-
-Second set of models with logloss and downsampling (w2 and a2).
-
-```{r: Second ridge regression w/o downsampling}
-# Black magic
-par_grid <-  expand.grid(alpha = 0,
-                        lambda = seq(.01, .25, 
-                                     length.out = 8))
-
-# Black magic
-cl <- makePSOCKcluster(5)
-registerDoParallel(cl)
-
-# Set seed
-set.seed(952)
-
-# Second ridge model for water temperature
-ridge_w2_logloss_downsampled <- train(w2, 
+# Ridge model with downsampling for water temperature
+ridge_w1_logloss_downsampled <- train(w1, 
                                       data = training, 
-                                      method = "glmnet", 
+                                      method = "glmnet",
                                       metric = "logLoss",
                                       tuneGrid = par_grid,
                                       trControl = control_logloss_ds)
 
-# Second ridge model for air temperature
-ridge_a2_logloss_downsampled <- train(a2, 
-                                      data = training, 
-                                      method = "glmnet", 
-                                      metric = "logLoss",
-                                      tuneGrid = par_grid,
-                                      trControl = control_logloss_ds)
 # Black magic
 stopCluster(cl)
 
 # Save models
-write_rds(ridge_w2_logloss_downsampled, "assessment/ridge_w2_logloss_downsampled.rds")
-write_rds(ridge_a2_logloss_downsampled, "assessment/ridge_a2_logloss_downsampled.rds")
+write_rds(ridge_a1_logloss_ds, "assessment/ridge_a1_logloss_ds.rds")
+write_rds(ridge_w1_logloss_ds, "assessment/ridge_w1_logloss_ds.rds")
 
 # Remove models
-rm(ridge_w2_logloss_downsampled, ridge_a2_logloss_downsampled)
+rm(ridge_a1_logloss_ds, ridge_w1_logloss_ds)
 ```
 
-Second set of models with logloss and downsampling (w2 and a2). Note that this suffers from unidentifiability in lambda (from Till).
-
-```{r: Second ridge regression w/o downsampling}
-# Black magic
-par_grid <-  expand.grid(alpha = 0,
-                        lambda = 10^seq(-6, -8,
-                                     length.out = 8))
-# Black magic
-cl <- makePSOCKcluster(5)
-registerDoParallel(cl)
-
-# Set seed
-set.seed(152)
-
-# Second ridge model for water temperature
-ridge_w2_logloss <- train(w2, 
-                          data = training, 
-                          method = "glmnet", 
-                          metric = "logLoss",
-                          tuneGrid = par_grid,
-                          trControl = control_logloss)
-
-# Second ridge model for water temperature
-ridge_a2_logloss <- train(a2, 
-                          data = training, 
-                          method = "glmnet", 
-                          metric = "logLoss",
-                          tuneGrid = par_grid,
-                          trControl = control_logloss)
-# Black magic
-stopCluster(cl)
-
-# Save models
-write_rds(ridge_w2_logloss, "assessment/ridge_w2_logloss.rds")
-write_rds(ridge_a2_logloss, "assessment/ridge_a2_logloss.rds")
-
-# Remove models
-rm(ridge_w2_logloss, ridge_a2_logloss)
-```
-
-### Step 7: Logistic regressions with random effecs
+### Step 7: Logistic regressions with random effects
 
 ```{r: First random effects logistic}
-# Random effects model for water temperature
-w1_re <- summerkill ~ long + lat + season + variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-  cumulative_above_10 + ice_duration + water_pca + (1 | site_id)
-
-# Black magic
-re_w1 <- glmer(w1_re,
-               data = training, 
-               family = binomial, 
-               control = glmerControl(optimizer = "bobyqa"),
-               nAGQ = 10)
-
-### Warning messages:
-### 1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-###   unable to evaluate scaled gradient
-### 2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-###    Hessian is numerically singular: parameters are not uniquely determined
-   
-# Black magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
-rf_w1 <- glmer(w1_re, 
-               data = training,
-               family = binomial,
-               control = glmerControl(optimizer = 'optimx',
-                                      optCtrl = list(method = 'L-BFGS-B')))
-
-# Random effects model for air temperature
-a1_re <- summerkill ~ long + lat + season + air_pca + (1 | site_id)
-   
-# Black magic
-re_a1 <- glmer(a1_re,
-               data = training, 
-               family = binomial, 
-               control = glmerControl(optimizer = "bobyqa"),
-               nAGQ = 10)
-
-### Warning messages:
-### 1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-###   unable to evaluate scaled gradient
-### 2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-###    Hessian is numerically singular: parameters are not uniquely determined
-   
-# Black magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
-rf_a1 <- glmer(a1_re, 
-               data = training,
-               family = binomial,
-               control = glmerControl(optimizer = 'optimx',
-                                      optCtrl = list(method = 'L-BFGS-B')))
-
-# Save models
-write_rds(re_w1, "assessment/re_w1.rds")
-write_rds(rf_w1, "assessment/rf_w1.rds")
-write_rds(re_a1, "assessment/re_a1.rds")
-write_rds(rf_a1, "assessment/rf_a1.rds")
-
-# Remove models
-rm(re_w1, rf_w1,
-   re_a1, rf_a1)
+## Random effects model for water temperature
+#w1_re <- summerkill ~ long + lat + season + variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
+#  cumulative_above_10 + ice_duration + water_pca + (1 | site_id)
+#
+## Black magic
+#re_w1 <- glmer(w1_re,
+#               data = training, 
+#               family = binomial, 
+#               control = glmerControl(optimizer = "bobyqa"),
+#               nAGQ = 10)
+#
+#### Warning messages:
+#### 1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+####   unable to evaluate scaled gradient
+#### 2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+####    Hessian is numerically singular: parameters are not uniquely determined
+#   
+## Black magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
+#rf_w1 <- glmer(w1_re, 
+#               data = training,
+#               family = binomial,
+#               control = glmerControl(optimizer = 'optimx',
+#                                      optCtrl = list(method = 'L-BFGS-B')))
+#
+## Random effects model for air temperature
+#a1_re <- summerkill ~ long + lat + season + air_pca + (1 | site_id)
+#   
+## Black magic
+#re_a1 <- glmer(a1_re,
+#               data = training, 
+#               family = binomial, 
+#               control = glmerControl(optimizer = "bobyqa"),
+#               nAGQ = 10)
+#
+#
+## Black magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
+#rf_a1 <- glmer(a1_re, 
+#               data = training,
+#               family = binomial,
+#               control = glmerControl(optimizer = 'optimx',
+#                                      optCtrl = list(method = 'L-BFGS-B')))
+#
+## Save models
+#write_rds(re_w1, "assessment/re_w1.rds")
+#write_rds(rf_w1, "assessment/rf_w1.rds")
+#write_rds(re_a1, "assessment/re_a1.rds")
+#write_rds(rf_a1, "assessment/rf_a1.rds")
+#
+## Remove models
+#rm(re_w1, rf_w1,
+#   re_a1, rf_a1)
 ```
 
 ######################################
