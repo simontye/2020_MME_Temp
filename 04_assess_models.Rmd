@@ -39,23 +39,33 @@ testing  <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
 
 # Reformat training data
 training <- training %>%
-  mutate(site_id      = as.character(site_id),
-         year         = as.character(year),
+  mutate(year         = as.character(year),
          month        = as.character(month),
-         season       = as.character(season),
+         season       = as.factor(season),
          summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration),
-         population   = as.numeric(population))
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         population   = as.numeric(population),
+         state        = as.factor(state),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         water_pca    = as.numeric(water_pca),
+         mean_air_z   = as.numeric(mean_air_z),
+         air_pca      = as.numeric(air_pca))
 
-# Load testing data
+# Reformat testing data
 testing <- testing %>%
-  mutate(site_id      = as.character(site_id),
-         year         = as.character(year),
+  mutate(year         = as.character(year),
          month        = as.character(month),
-         season       = as.character(season),
+         season       = as.factor(season),
          summerkill   = as.factor(summerkill),
-         ice_duration = as.double(ice_duration),
-         population   = as.numeric(population))
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         population   = as.numeric(population),
+         state        = as.factor(state),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         water_pca    = as.numeric(water_pca),
+         mean_air_z   = as.numeric(mean_air_z),
+         air_pca      = as.numeric(air_pca))
 ```
 
 ### Step 2: Load models
@@ -64,53 +74,53 @@ testing <- testing %>%
 # Change working directory
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models/assessment") 
 
-# Load loads
-w1e    <- readRDS("logistic_w1e.rds")
-w1s    <- readRDS("logistic_w1s.rds")
-w1se   <- readRDS("logistic_w1se.rds")
-a1e    <- readRDS("logistic_a1e.rds")
-a1s    <- readRDS("logistic_a1s.rds")
-a1se   <- readRDS("logistic_a1se.rds")
-w2e    <- readRDS("logistic_w2e.rds")
-w2s    <- readRDS("logistic_w2s.rds")
-w2se   <- readRDS("logistic_w2se.rds")
-a2e    <- readRDS("logistic_a2e.rds")
-a2s    <- readRDS("logistic_a2s.rds")
-a2se   <- readRDS("logistic_a2se.rds")
-w1e.mn <- readRDS("logistic_w1e_mn.rds")
-w1e.wi <- readRDS("logistic_w1e_wi.rds")
-a1e.mn <- readRDS("logistic_a1e_mn.rds")
-a1e.wi <- readRDS("logistic_a1e_wi.rds")
-w2e.mn <- readRDS("logistic_w2e_mn.rds")
-w2e.wi <- readRDS("logistic_w2e_wi.rds")
-a2e.mn <- readRDS("logistic_a2e_mn.rds")
-a2e.wi <- readRDS("logistic_a2e_wi.rds")
-
-# Summary of water models
-summary(w1e )
-summary(w1s )
-summary(w1se)
-summary(w2e ) ###
-summary(w2s )
-summary(w2se)
-
-# Summary of air models
-summary(a1e )
-summary(a1s )
-summary(a1se)
-summary(a2e )
-summary(a2s )
-summary(a2se) ###
-
-# Summary of state-specific models
-summary(w1e.mn) #
-summary(a1e.mn) #
-summary(w2e.mn) #
-summary(a2e.mn) #
-summary(w1e.wi)
-summary(a1e.wi)
-summary(w2e.wi) ###
-summary(a2e.wi)
+## Load loads
+#w1e    <- readRDS("logistic_w1e.rds")
+#w1s    <- readRDS("logistic_w1s.rds")
+#w1se   <- readRDS("logistic_w1se.rds")
+#a1e    <- readRDS("logistic_a1e.rds")
+#a1s    <- readRDS("logistic_a1s.rds")
+#a1se   <- readRDS("logistic_a1se.rds")
+#w2e    <- readRDS("logistic_w2e.rds")
+#w2s    <- readRDS("logistic_w2s.rds")
+#w2se   <- readRDS("logistic_w2se.rds")
+#a2e    <- readRDS("logistic_a2e.rds")
+#a2s    <- readRDS("logistic_a2s.rds")
+#a2se   <- readRDS("logistic_a2se.rds")
+#w1e.mn <- readRDS("logistic_w1e_mn.rds")
+#w1e.wi <- readRDS("logistic_w1e_wi.rds")
+#a1e.mn <- readRDS("logistic_a1e_mn.rds")
+#a1e.wi <- readRDS("logistic_a1e_wi.rds")
+#w2e.mn <- readRDS("logistic_w2e_mn.rds")
+#w2e.wi <- readRDS("logistic_w2e_wi.rds")
+#a2e.mn <- readRDS("logistic_a2e_mn.rds")
+#a2e.wi <- readRDS("logistic_a2e_wi.rds")
+#
+## Summary of water models
+#summary(w1e )
+#summary(w1s )
+#summary(w1se)
+#summary(w2e ) ###
+#summary(w2s )
+#summary(w2se)
+#
+## Summary of air models
+#summary(a1e )
+#summary(a1s )
+#summary(a1se)
+#summary(a2e )
+#summary(a2s )
+#summary(a2se) ###
+#
+## Summary of state-specific models
+#summary(w1e.mn) #
+#summary(a1e.mn) #
+#summary(w2e.mn) #
+#summary(a2e.mn) #
+#summary(w1e.wi)
+#summary(a1e.wi)
+#summary(w2e.wi) ###
+#summary(a2e.wi)
 
 # Save file names
 model_names <- list.files()
@@ -133,6 +143,8 @@ all_models <- model_names %>%
 # Black magic
 all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."),
                                     1, -2), model = all_models)
+
+str(all_models)
 ```
 
 ### Step 3: Extract fitted values

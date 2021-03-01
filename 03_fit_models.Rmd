@@ -93,7 +93,7 @@ w1 <- summerkill ~ lat + long + season + population +
 
 Magic.
 
-```{r: Set up parameters for ridge and lasso models}
+```{r: Set up parameters}
 # No downsampling
 control_logloss <- trainControl(method = "repeatedcv",
                                 number = 5,
@@ -155,7 +155,7 @@ write_rds(logistic_w1_stepwise, "assessment/logistic_w1_stepwise.rds")
 
 ### Step 5: Lasso regressions
 
-Lasso models without downsampling and with different lambdas, utilizing a 5-fold CV scheme and repeated five times, on the training data.
+Lasso models with different lambdas, utilizing a 5-fold CV scheme and repeated five times, on the training data.
 
 ```{r: Air temperature w/o downsampling}
 # Magic (for remote computing)
@@ -163,7 +163,7 @@ Lasso models without downsampling and with different lambdas, utilizing a 5-fold
 #registerDoParallel(cl)
 
 # Create grid of parameters
-par_grid <-  expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
+par_grid <- expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
 
 # Set seed
 set.seed(685)
@@ -172,7 +172,7 @@ set.seed(685)
 lasso_a1_logloss_train <- train(a1,
                                 data      = training, 
                                 method    = "glmnet", 
-                                metric    = "LogLoss",
+                                metric    = "logLoss",
                                 tuneGrid  = par_grid,
                                 trControl = control_logloss)
 
@@ -198,7 +198,7 @@ lasso_a1_logloss <- glmnet(x = lasso_a1_logloss_vars, y = lasso_a1_logloss_resp,
                            family = "binomial", alpha = 1, lambda = 1.5e-06)
 
 # Plot coefficients of best model
-#plot(lasso_a1_logloss)
+plot(lasso_a1_logloss)
 
 # Compare coefficients of best fit model
 coef(lasso_a1_logloss_train$finalModel, lasso_a1_logloss_train$bestTune$lambda)
@@ -210,10 +210,41 @@ lasso_a1_logloss_coef <- coef(lasso_a1_logloss)
 # Compare with testing data
 #pred <- predict(lasso_a1_logloss, s = 1.5e-06, newx = XXX)
 
+# Save model
+write_rds(lasso_a1_logloss, "assessment/lasso_a1_logloss.rds")
+
 # Remove objects
 rm(lasso_a1_logloss_train,
    lasso_a1_logloss_resp,
    lasso_a1_logloss_vars)
+
+######################################################
+
+# Compute R^2 from true and predicted values
+eval_results <- function(true, predicted, df) {
+  SSE <- sum((predicted - true)^2)
+  SST <- sum((true - mean(true))^2)
+  R_square <- 1 - SSE / SST
+  RMSE = sqrt(SSE/nrow(df))
+
+  
+  # Model performance metrics
+data.frame(
+  RMSE = RMSE,
+  Rsquare = R_square
+)
+  
+}
+
+# Prediction and evaluation on train data
+predictions_train <- predict(ridge_reg, s = optimal_lambda, newx = x)
+eval_results(y_train, predictions_train, train)
+
+# Prediction and evaluation on test data
+predictions_test <- predict(ridge_reg, s = optimal_lambda, newx = x_test)
+eval_results(y_test, predictions_test, test)
+
+######################################################
 ```
 
 ```{r: Water temperature w/o downsampling}
@@ -255,6 +286,9 @@ coef(lasso_w1_logloss)
 
 # Save coefficients of best fit model
 lasso_w1_logloss_coef <- coef(lasso_w1_logloss)
+
+# Save model
+write_rds(lasso_w1_logloss, "assessment/lasso_w1_logloss.rds")
 
 # Compare with testing data
 #pred <- predict(lasso_w1, s = 1.5e-06, newx = XXX)
@@ -318,6 +352,9 @@ lasso_a1_logloss_ds_coef <- coef(lasso_a1_logloss_ds)
 # Compare with testing data
 #pred <- predict(lasso_a1_logloss_ds, s = 1.5e-06, newx = XXX)
 
+# Save model
+write_rds(lasso_a1_logloss_ds, "assessment/lasso_a1_logloss_ds.rds")
+
 # Remove objects
 rm(lasso_a1_logloss_ds_train,
    lasso_a1_logloss_ds_resp,
@@ -367,6 +404,9 @@ lasso_w1_logloss_ds_coef <- coef(lasso_w1_logloss_ds)
 # Compare with testing data
 #pred <- predict(lasso_w1, s = 1.5e-06, newx = XXX)
 
+# Save model
+write_rds(lasso_w1_logloss_ds, "assessment/lasso_w1_logloss_ds.rds")
+
 # Remove objects
 rm(lasso_w1_logloss_ds_train,
    lasso_w1_logloss_ds_resp,
@@ -375,7 +415,7 @@ rm(lasso_w1_logloss_ds_train,
 
 ### Step 6: Ridge logistic regressions
 
-Ridge models with logloss and without downsampling.
+Ridge models with different lambdas.
 
 ```{r: Air temperature w/o downsampling}
 # Create grid of parameters
@@ -430,6 +470,9 @@ ridge_a1_logloss_coef <- coef(ridge_a1_logloss)
 # Compare with testing data
 #pred <- predict(ridge_a1_logloss, s = 3.2e-06, newx = XXX)
 
+# Save model
+write_rds(ridge_a1_logloss, "assessment/ridge_a1_logloss.rds")
+
 # Remove objects
 rm(ridge_a1_logloss_train,
    ridge_a1_logloss_resp,
@@ -477,7 +520,10 @@ coef(ridge_w1_logloss)
 ridge_w1_logloss_coef <- coef(ridge_w1_logloss)
 
 # Compare with testing data
-#pred <- predict(ridge_w1_logloss, s = 3.2e-06, newx = XXX)
+#pred <- predict(ridge_w1_logloss, s = 9.14e-06, newx = XXX)
+
+# Save model
+write_rds(ridge_w1_logloss, "assessment/ridge_w1_logloss.rds")
 
 # Remove objects
 rm(ridge_w1_logloss_train,
@@ -496,7 +542,7 @@ ridge_a1_logloss_ds_train <- train(a1,
 
 # Print results
 ridge_a1_logloss_ds_train
-# The final values used for the model were alpha = 0 and lambda = 9.14e-06.
+# The final values used for the model were alpha = 0 and lambda = 1.5e-05.
 
 # Subset summerkill from training data
 ridge_a1_logloss_ds_resp <- ridge_a1_logloss_ds_train$trainingData %>%
@@ -513,7 +559,7 @@ ridge_a1_logloss_ds_vars <- ridge_a1_logloss_ds_train$trainingData %>%
 
 # Run best fit lasso model
 ridge_a1_logloss_ds <- glmnet(x = ridge_a1_logloss_ds_vars, y = ridge_a1_logloss_ds_resp,
-                              family = "binomial", alpha = 0, lambda = 3.2e-06)
+                              family = "binomial", alpha = 0, lambda = 1.5e-05)
 
 # Plot coefficients of best model
 plot(ridge_a1_logloss_ds)
@@ -526,12 +572,15 @@ coef(ridge_a1_logloss_ds)
 ridge_a1_logloss_ds_coef <- coef(ridge_a1_logloss_ds_train)
 
 # Compare with testing data
-#pred <- predict(ridge_a1_logloss, s = 3.2e-06, newx = XXX)
+#pred <- predict(ridge_a1_logloss_ds, s = 3.2e-06, newx = XXX)
+
+# Save model
+write_rds(ridge_a1_logloss_ds, "assessment/ridge_a1_logloss_ds.rds")
 
 # Remove objects
-rm(lasso_a1_logloss_ds_train,
-   lasso_a1_logloss_ds_resp,
-   lasso_a1_logloss_ds_vars)
+rm(ridge_a1_logloss_ds_train,
+   ridge_a1_logloss_ds_resp,
+   ridge_a1_logloss_ds_vars)
 ```
 
 ```{r: Water temperature w/ downsampling}
@@ -545,7 +594,7 @@ ridge_w1_logloss_ds_train <- train(w1,
 
 # Print results
 ridge_w1_logloss_ds_train
-# The final values used for the model were alpha = 0 and lambda = 9.14e-06.
+# The final values used for the model were alpha = 0 and lambda = 1.5e-05.
 
 # Subset summerkill from training data
 ridge_w1_logloss_ds_resp <- ridge_w1_logloss_ds_train$trainingData %>%
@@ -555,14 +604,14 @@ ridge_w1_logloss_ds_resp <- ridge_w1_logloss_ds_train$trainingData %>%
 
 # Subset variables from training data
 ridge_w1_logloss_ds_vars <- ridge_w1_logloss_ds_train$trainingData %>%
-  subset(., select = c("long", "lat", "season", "population", "mean_air_z", "air_pca", "state")) %>%
+  subset(., select = c("long", "lat", "season", "population", "mean_surf_z", "water_pca", "state")) %>%
   mutate(season = as.factor(season),
          state  = as.factor(state)) %>%
   data.matrix(.)
 
 # Run best fit lasso model
 ridge_w1_logloss_ds <- glmnet(x = ridge_w1_logloss_ds_vars, y = ridge_w1_logloss_ds_resp,
-                              family = "binomial", alpha = 0, lambda = 3.2e-06)
+                              family = "binomial", alpha = 0, lambda = 1.5e-05)
 
 # Plot coefficients of best model
 plot(ridge_w1_logloss_ds)
@@ -575,12 +624,15 @@ coef(ridge_w1_logloss_ds)
 ridge_w1_logloss_ds_coef <- coef(ridge_w1_logloss_ds_train)
 
 # Compare with testing data
-#pred <- predict(ridge_w1_logloss, s = 3.2e-06, newx = XXX)
+#pred <- predict(ridge_w1_logloss_ds, s = 1.5e-05, newx = XXX)
+
+# Save model
+write_rds(ridge_w1_logloss_ds, "assessment/ridge_w1_logloss_ds.rds")
 
 # Remove objects
-rm(lasso_w1_logloss_ds_train,
-   lasso_w1_logloss_ds_resp,
-   lasso_w1_logloss_ds_vars)
+rm(ridge_w1_logloss_ds_train,
+   ridge_w1_logloss_ds_resp,
+   ridge_w1_logloss_ds_vars)
 ```
 
 ### Step 7: Logistic regressions with random effects
