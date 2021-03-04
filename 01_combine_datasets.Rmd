@@ -1,7 +1,7 @@
 ---
 title: "combine datasets"
 author: "fishkill friends"
-date: "2021/02/02"
+date: "2021_02_02"
 output: github_document
 ---
 
@@ -103,7 +103,7 @@ mn.fish <- mn.fish %>%
   mutate(date = as.Date(with(mn.fish, paste(year, month, day, sep = "-")), "%Y-%m-%d"),
          month = as.numeric(as.character(month))) %>%
   dplyr::filter(date > "2003-01-01", date < "2013-12-31") %>%  # changed to match timespan of Phelps, removed last 6 months
-  rename(event = event..,
+  dplyr::rename(event = event..,
          waterbody.name = waterbody,
          lat  = y,
          long = x,
@@ -111,7 +111,7 @@ mn.fish <- mn.fish %>%
   mutate(dummy = 1,
          cause.groups = cause.group) %>%
   spread(as.numeric(cause.groups), dummy, fill = 0) %>%
-  rename(unknown = V1) %>% # unknown diagnoses (blank cells) were moved to V1
+  dplyr::rename(unknown = V1) %>% # unknown diagnoses (blank cells) were moved to V1
   mutate(anthropogenic = ifelse(`biofueling bleach` >= 1 | `chemica ` >= 1 | `chemical smell suspected spill` >= 1 | `discharge power plant` >= 1 | `fertilizer spill` >= 1 | `gasoline spill` >= 1 | `glycol release` >= 1 | manure >= 1 | `manure spill` >= 1 | `nuclear plant shutdown` >= 1 | `paper mill` >= 1 | `power plant related` >= 1 | spill >= 1 | `styrene toxicity` >= 1 | `temp fluctuation from plant` >= 1 | `wwtp released` >= 1 | `zebra mussel treatment` >= 1, 1, 0),
          infectious = ifelse(`a.hydrophila intestine+` >= 1 | `bacterial and parasitic infection` >= 1 | `bacterial gill disease` >= 1 | `bacterial septicemia` >= 1 | `bleeding disease?` >= 1 | `carp erythrodermatitis` >= 1 | columnaris >= 1 | `columnaris disease and aermonas septicemia)` >= 1 | `columnaris with parasitic infection` >= 1 | `environmental gill disease` >= 1 | `environmental gill disease with low level of secondary parasitic infection.` >= 1 | `environmental gill disease.  ` >= 1 | `environmental gill disease; systemic bacterial infection due to a. hydrophila, p. fluorescens and external and internal parasitic infections` >= 1 | `gill parasites` >= 1 | `intralamellar henneguya` >= 1 | `opportustic bacterial infection` >= 1 | `parasite infestation and stress` >= 1 | `regressed lymphosarcoma from last year. ` >= 1 | svc >= 1, 1, 0),
          summerkill = ifelse(summerkill >= 1 | `low 02, high temp` >= 1 | `warm temp` >= 1, 1, 0),
@@ -209,7 +209,7 @@ mn.fish <- mn.fish.gps %>%
   left_join(., site.id, by = "site", all = TRUE) %>%
   left_join(., mn.fish, by = "event", all = TRUE) %>%
   dplyr::select(., -c("long.y", "lat.y")) %>% # removes old coordinates
-  rename(lat  = lat.x,
+  dplyr::rename(lat  = lat.x,
          long = long.x) %>%
   subset(., !is.na(.$lat)) # removes events without coordinates
 
@@ -312,7 +312,7 @@ mn.fish.2 <- mn.fish.2[!(mn.fish.2$event == "s2011188" | mn.fish.2$event == "s20
 # Sums the number of fish families and species for each event. The taxonomic resolution of observations varies, and this code is conservative. It considers all observations that may have been of the same species as a single species (e.g., bass + largemouth bass = 1 species). To do this, I sum the columns of unique species, then use ifelse statements to only add one species for coarse taxonomic categorizations.
 mn.fish <- mn.fish.1 %>%
   merge(., mn.fish.2, all = TRUE) %>%
-  rename(gizzard.shad = gizzard.gizzard.shad) %>%
+  dplyr::rename(gizzard.shad = gizzard.gizzard.shad) %>%
   mutate(month = as.numeric(month),
          clupeidae = ifelse(gizzard.shad >= 1, 1, 0)) %>% # add missing family column
   mutate_at(c(13:53), as.numeric) %>% # convert families and species to numeric
@@ -344,17 +344,17 @@ wi.fish <- wi.fish %>%
   rename_all(tolower) %>%
   mutate_all(tolower) %>%
   dplyr::filter(date > "2003-01-01", date < "2013-12-31") %>%  # changed to match timespan of Phelps, removed last 6 months
-  rename(#month        = investigation.start.month,
-         event        = fishkill.inv.seq.no,
-         cause.group  = cause.category.4,
-         fish_species = x..fish.species.confirmed) %>%
+  dplyr::rename(#month        = investigation.start.month,
+                event        = fishkill.inv.seq.no,
+                cause.group  = cause.category.4,
+                fish_species = x..fish.species.confirmed) %>%
   mutate(event = as.integer(event),
          dummy = 1,
          cause.groups = cause.group) %>% 
   spread(cause.groups, dummy, fill = 0) %>%
   distinct(waterbody.name, year, month, .keep_all = TRUE) %>%
-  rename(anthropogenic = `anthropogenic condition`,
-         infectious    = `infectious agent`) %>%
+  dplyr::rename(anthropogenic = `anthropogenic condition`,
+                infectious    = `infectious agent`) %>%
   replace_with_na_all(condition = ~.x == "unknown") %>% # replaces unknowns with NAs
   mutate(acipenseridae = ifelse(sturgeon >= 1, 1, 0),
          amiidae = ifelse(blowfin >= 1 | dogfish >= 1, 1, 0),
@@ -543,7 +543,7 @@ This creates a preliminary map of fishkill events across Minnesota and Wisconsin
 # Subsets data for a map
 fish.map <- fish %>%
   subset(., select = c(lat, long, year, state, event)) %>%
-  rename(region = state) %>%
+  dplyr::rename(region = state) %>%
   mutate(lat = as.numeric(lat),
          long = as.numeric(long))
          
@@ -610,13 +610,13 @@ hist.water.annual <- hist.water %>%
   group_by(site_id, year) %>% # changed from WBIC in Till et al. (2019) workflow
   summarise_if(is.numeric, mean, na.rm = TRUE) %>%
   ungroup() %>%
-  rename(ice_duration = ice_duration_days,
-         schmidt = schmidt_daily_annual_sum,
-         variance_after_ice_30 = coef_var_0.30, 
-         variance_after_ice_60 = coef_var_30.60, 
-         cumulative_above_0 = gdd_wtr_0c,
-         cumulative_above_5 = gdd_wtr_5c,
-         cumulative_above_10 = gdd_wtr_10c) %>%
+  dplyr::rename(ice_duration = ice_duration_days,
+                schmidt = schmidt_daily_annual_sum,
+                variance_after_ice_30 = coef_var_0.30, 
+                variance_after_ice_60 = coef_var_30.60, 
+                cumulative_above_0 = gdd_wtr_0c,
+                cumulative_above_5 = gdd_wtr_5c,
+                cumulative_above_10 = gdd_wtr_10c) %>%
   mutate(log_schmidt = log(schmidt + .00001),
          year = as.numeric(year))
 
@@ -628,7 +628,7 @@ hist.water.month <- hist.water %>%
                 starts_with('max_bot_'),
                 -contains('jas'),
                 year, site_id) %>% # changed from WBIC in Till et al. (2019) workflow
-  mutate(uniqueid = 1:n()) %>%
+  dplyr::mutate(uniqueid = 1:n()) %>%
   gather(key = "type", value = "temperature", 
          starts_with('mean_surf_'),
          starts_with('mean_bot_'), 
@@ -671,10 +671,18 @@ hist.water.month <- hist.water.month %>%
   mutate(year  = as.numeric(as.character(year)),
          month = as.numeric(as.character(month)))
 
+# Correlation matrix of water temperature metrics
+cor(x = subset(hist.water.month, select = c(max_surf, mean_surf, mean_bot)))
+
 # Perform PCA to collapse collinear covariates into a single variable
 water.pr <- hist.water.month %>%
   dplyr::select(max_surf, mean_surf, mean_bot) %>%
   prcomp(center = TRUE, scale = TRUE)
+
+# Correlation 
+# Calculate proportion of variance explained
+water.pca.prop <- water.pr$sdev / sum(water.pr$sdev)
+round(water.pca.prop, 2)
 
 # Isolate PCA results into separate dataframe
 water_pca <- hist.water.month %>%
@@ -697,7 +705,7 @@ df.historical <- hist.water.month %>%
 
 # Remove unnecessary dataframes
 rm(hist.water.annual, hist.water.month,
-   water.pr, water_pca)
+   water.pr, water_pca, water.pca.prop)
 ```
 
 ### Step 7a: Add air temperature data (NOAA) to historical dataset
@@ -922,14 +930,14 @@ hist.air <- hist.air.1 %>%
   full_join(., hist.air.2) %>%
   rename_all(tolower) %>%
   mutate_all(tolower) %>%
-  rename(id       = name,
-         long     = longitude,
-         lat      = latitude,
-         elev     = elevation..m.,
-         precip   = ppt..mm.,
-         min_air  = tmin..degrees.c.,
-         mean_air = tmean..degrees.c.,
-         max_air  = tmax..degrees.c.)
+  dplyr::rename(id       = name,
+                long     = longitude,
+                lat      = latitude,
+                elev     = elevation..m.,
+                precip   = ppt..mm.,
+                min_air  = tmin..degrees.c.,
+                mean_air = tmean..degrees.c.,
+                max_air  = tmax..degrees.c.)
 
 # Create year and month columns from date column
 hist.air[10:11] <- do.call('rbind', strsplit(as.character(hist.air$date), '-'))
@@ -937,8 +945,8 @@ hist.air[10:11] <- do.call('rbind', strsplit(as.character(hist.air$date), '-'))
 # Rename and reformat year and month columns
 hist.air <- hist.air %>%
   dplyr::select(., -c("date")) %>%
-  rename(year  = V10,
-         month = V11) %>%
+  dplyr::rename(year  = V10,
+                month = V11) %>%
   mutate_if(is.character, as.numeric) %>%
   mutate(id = as.character(id))
 
@@ -962,10 +970,17 @@ df.historical <- df.historical %>%
   ungroup() %>%
   mutate(air_quad_temp = mean_air^2)
 
+# Correlation matrix of air temperature metrics
+cor(x = subset(df.historical, select = c(max_air, mean_air, min_air)))
+
 # Perform PCA to collapse collinear covariates into a single variable (air_pca). For this, I used mean and max air temperature (excluded min air temp) so it matched the PCA of mean and max water temperature
 air.pr <- df.historical %>%
   dplyr::select(max_air, mean_air, min_air) %>%
   prcomp(center = TRUE, scale = TRUE)
+
+# Calculate proportion of variance explained
+air.pca.prop <- air.pr$sdev / sum(air.pr$sdev)
+round(air.pca.prop, 2)
 
 # Add PCA results into monthly air temperature data
 air_pca <- df.historical %>%
@@ -979,7 +994,8 @@ df.historical <- df.historical %>%
 # Remove unnecessary dataframes
 rm(hist.water, hist.air,
    hist.air.1, hist.air.2,
-   air.pr, air_pca, sites)
+   air.pr, air_pca, sites,
+   air.pca.prop)
 ```
 
 ### Step 8: Add geographic, census, and ecoregion to historical dataset

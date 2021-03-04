@@ -1,7 +1,7 @@
 ---
 title: "fit models"
 author: "fishkill friends"
-date: "2021/02/23"
+date: "2021_03_04"
 output: github_document
 ---
 
@@ -31,8 +31,6 @@ library(doParallel)
 library(lme4)
 library(optimx)
 
-
-install.packages("FEM")
 # Reset global environment
 rm(list = ls())
 
@@ -41,8 +39,11 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/m
 
 # Load data
 training      <- read.csv(file = "training.csv", head = TRUE, sep = ",")
+training.cold <- read.csv(file = "training_cold.csv", head = TRUE, sep = ",")
+training.warm <- read.csv(file = "training_warm.csv", head = TRUE, sep = ",")
 testing       <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
-df.historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
+testing.cold  <- read.csv(file = "testing_cold.csv",  head = TRUE, sep = ",")
+testing.warm  <- read.csv(file = "testing_warm.csv",  head = TRUE, sep = ",")
 
 # Reformat training data
 training <- training %>%
@@ -54,6 +55,38 @@ training <- training %>%
          long         = as.numeric(long),
          population   = as.numeric(population),
          state        = as.factor(state),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         water_pca    = as.numeric(water_pca),
+         mean_air_z   = as.numeric(mean_air_z),
+         air_pca      = as.numeric(air_pca))
+
+# Reformat training data for cold-fish
+training.cold <- training.cold %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         summerkill   = as.factor(summerkill),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         population   = as.numeric(population),
+         state        = as.factor(state),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         water_pca    = as.numeric(water_pca),
+         mean_air_z   = as.numeric(mean_air_z),
+         air_pca      = as.numeric(air_pca))
+
+# Reformat training data for warm-fish
+training.warm <- training.warm %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         summerkill   = as.factor(summerkill),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         population   = as.numeric(population),
+         state        = as.factor(state),
+         mean_bot_z   = as.numeric(mean_bot_z),
          mean_surf_z  = as.numeric(mean_surf_z),
          water_pca    = as.numeric(water_pca),
          mean_air_z   = as.numeric(mean_air_z),
@@ -73,25 +106,144 @@ testing <- testing %>%
          water_pca    = as.numeric(water_pca),
          mean_air_z   = as.numeric(mean_air_z),
          air_pca      = as.numeric(air_pca))
+
+# Reformat testing data for cold-water fish
+testing.cold <- testing.cold %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         summerkill   = as.factor(summerkill),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         population   = as.numeric(population),
+         state        = as.factor(state),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         water_pca    = as.numeric(water_pca),
+         mean_air_z   = as.numeric(mean_air_z),
+         air_pca      = as.numeric(air_pca))
+
+# Reformat testing data for warm-water fish
+testing.warm <- testing.warm %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         summerkill   = as.factor(summerkill),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         population   = as.numeric(population),
+         state        = as.factor(state),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         water_pca    = as.numeric(water_pca),
+         mean_air_z   = as.numeric(mean_air_z),
+         air_pca      = as.numeric(air_pca))
+
+# Subset summerkills from testing data
+testing_resp <- testing %>%
+  subset(., select = ("summerkill")) %>%
+  mutate(summerkill = as.factor(summerkill)) %>%
+  data.matrix(.)
+
+# Subset summerkills from testing data for cold-water fish
+testing_resp_cold <- testing.cold %>%
+  subset(., select = ("summerkill")) %>%
+  mutate(summerkill = as.factor(summerkill)) %>%
+  data.matrix(.)
+
+# Subset summerkills from testing data for warm-water fish
+testing_resp_warm <- testing.warm %>%
+  subset(., select = ("summerkill")) %>%
+  mutate(summerkill = as.factor(summerkill)) %>%
+  data.matrix(.)
+
+# Subset air temp variables from testing data
+testing_air_vars <- testing %>%
+  subset(., select = c("long", "lat", "season", "population", "mean_air_z", "air_pca", "state")) %>%
+  mutate(season = as.factor(season),
+         state  = as.factor(state)) %>%
+  data.matrix(.)
+
+# Subset air temp variables from testing data for cold-water fish
+testing_air_vars_cold <- testing.cold %>%
+  subset(., select = c("long", "lat", "season", "population", "mean_air_z", "air_pca", "state")) %>%
+  mutate(season = as.factor(season),
+         state  = as.factor(state)) %>%
+  data.matrix(.)
+
+# Subset air temp variables from testing data for warm-water fish
+testing_air_vars_warm <- testing.warm %>%
+  subset(., select = c("long", "lat", "season", "population", "mean_air_z", "air_pca", "state")) %>%
+  mutate(season = as.factor(season),
+         state  = as.factor(state)) %>%
+  data.matrix(.)
+
+# Subset water temp variables from testing data
+testing_water_vars <- testing %>%
+  subset(., select = c("long", "lat", "season", "population", "mean_surf_z", "water_pca", "state")) %>%
+  mutate(season = as.factor(season),
+         state  = as.factor(state)) %>%
+  data.matrix(.)
+
+# Subset water temp variables from testing data
+testing_water_vars_cold <- testing.cold %>%
+  subset(., select = c("long", "lat", "season", "population", "mean_surf_z", "mean_bot_z", "water_pca", "state")) %>%
+  mutate(season = as.factor(season),
+         state  = as.factor(state)) %>%
+  data.matrix(.)
+
+# Subset water temp variables from testing data
+testing_water_vars_warm <- testing.warm %>%
+  subset(., select = c("long", "lat", "season", "population", "mean_surf_z", "mean_bot_z", "water_pca", "state")) %>%
+  mutate(season = as.factor(season),
+         state  = as.factor(state)) %>%
+  data.matrix(.)
+
+# Compute R^2 from true and predicted values for ridge and lasso regressions
+eval_results <- function(true, predicted, df) {
+  SSE <- sum((predicted - true)^2)
+  SST <- sum((true - mean(true))^2)
+  R_square <- 1 - SSE / SST
+  RMSE = sqrt(SSE/nrow(df))
+
+  # Model performance metrics
+data.frame(
+  RMSE = RMSE,
+  Rsquare = R_square)
+}
+
 ```
 
-### Step 2: Specify variable sets
+### Step 2: Specify models
 
-Simple air and water models
-
-```{r: Simple models}
-# Air temperature model (all taxa)
+```{r: Specify models}
+# Simple air model
 a1 <- summerkill ~ long + lat + season + population +
-  mean_air_z + air_pca + state
+  mean_air_z + air_pca + state + l3_code
 
-# Water temperature model (all taxa)
+# Simple water model
 w1 <- summerkill ~ lat + long + season + population +
-  mean_surf_z + water_pca + state
+  mean_surf_z + water_pca + state + l3_code
+
+# Complex air model
+a2 <- summerkill ~ long + lat + season + population + state + l3_code +
+  max_air + mean_air + min_air +
+  max_air_z + mean_air_z + min_air_z +
+  air_pca + air_quad_temp
+
+# Complex water model
+w2 <- summerkill ~ lat + long + season + population + state + l3_code +
+  max_bot + mean_bot + max_surf + mean_surf +
+  max_bot_z + mean_bot_z + max_surf_z + mean_surf_z +
+  water_pca + layer_diff + water_quad_temp + peak_temp + ice_duration +
+  cumulative_above_0 + cumulative_above_5 + cumulative_above_10
+
+## Water temperature model (cold- vs warm-water taxa)
+#w1.taxa <- summerkill ~ lat + long + season + population +
+#  mean_surf_z + mean_bot_z + water_pca + state
 ```
 
 ### Step 3: Set up lambda selection parameters for ridge and lasso regressions
-
-Magic.
 
 ```{r: Set up parameters}
 # No downsampling
@@ -114,43 +266,47 @@ control_logloss_ds <- trainControl(method = "repeatedcv",
 
 Logistic models generalized models and stepwise comparisons
 
-```{r: Logistic regression}
+```{r: Air temperature}
 # Set seed
 set.seed(736)
 
-# New generalized model for air temperature
-logistic_a1 <- glm(a1, training, family = "binomial")
-
-# Save coefficients
-logistic_a1_coef <- logistic_a1$coefficients
+# Logistic regression model for air temperature
+logistic_a1 <- glm(a1, training, family = "binomial") # glm.fit: fitted probabilities numerically 0 or 1 occurred 
+logistic_a2 <- glm(a2, training, family = "binomial") # glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
 # Stepwise model comparisons by AIC
-logistic_a1_stepwise <- step(logistic_a1)
-
-# Save coefficients
-logistic_a1_stepwise_coef <- logistic_a1_stepwise$coefficients
-
-# New generalized model for water temperatures
-logistic_w1 <- glm(w1, training, family = "binomial")
-
-# Save coefficients
-logistic_w1_coef <- logistic_w1$coefficients
-
-# Stepwise model comparisons by AIC
-logistic_w1_stepwise <- step(logistic_w1)
-
-# Save coefficients
-logistic_w1_stepwise_coef <- logistic_w1_stepwise$coefficients
+logistic_a1_stepwise <- step(logistic_a1) # glm.fit: fitted probabilities numerically 0 or 1 occurred 
+logistic_a2_stepwise <- step(logistic_a2) # glm.fit: fitted probabilities numerically 0 or 1 occurred 
 
 # Save models 
-write_rds(logistic_a1, "assessment/logistic_a1.rds")
-write_rds(logistic_w1, "assessment/logistic_w1.rds")
+write_rds(logistic_a1,          "assessment/logistic_a1.rds")
 write_rds(logistic_a1_stepwise, "assessment/logistic_a1_stepwise.rds")
-write_rds(logistic_w1_stepwise, "assessment/logistic_w1_stepwise.rds")
+write_rds(logistic_a2,          "assessment/logistic_a2.rds")
+write_rds(logistic_a2_stepwise, "assessment/logistic_a2_stepwise.rds")
 
-## Remove models
-#rm(logistic_a1, logistic_a1_stepwise,
-#   logistic_w1, logistic_w1_stepwise)
+# Remove models
+rm(logistic_a1, logistic_a1_stepwise,
+   logistic_a2, logistic_a2_stepwise)
+```
+
+```{r: Water temperature}
+# Logistic regression model for water temperature
+logistic_w1 <- glm(w1, training, family = "binomial") # glm.fit: fitted probabilities numerically 0 or 1 occurred 
+logistic_w2 <- glm(w2, training, family = "binomial") # glm.fit: fitted probabilities numerically 0 or 1 occurred
+
+# Stepwise model comparisons by AIC
+logistic_w1_stepwise <- step(logistic_w1) # glm.fit: fitted probabilities numerically 0 or 1 occurred
+logistic_w2_stepwise <- step(logistic_w2) # glm.fit: fitted probabilities numerically 0 or 1 occurred
+
+# Save models 
+write_rds(logistic_w1,          "assessment/logistic_w1.rds")
+write_rds(logistic_w1_stepwise, "assessment/logistic_w1_stepwise.rds")
+write_rds(logistic_w2,          "assessment/logistic_w2.rds")
+write_rds(logistic_w2_stepwise, "assessment/logistic_w2_stepwise.rds")
+
+# Remove models
+rm(logistic_w1, logistic_w1_stepwise,
+   logistic_w2, logistic_w2_stepwise)
 ```
 
 ### Step 5: Lasso regressions
@@ -158,7 +314,7 @@ write_rds(logistic_w1_stepwise, "assessment/logistic_w1_stepwise.rds")
 Lasso models with different lambdas, utilizing a 5-fold CV scheme and repeated five times, on the training data.
 
 ```{r: Air temperature w/o downsampling}
-# Magic (for remote computing)
+# For remote computing
 #cl <- makePSOCKcluster(6)
 #registerDoParallel(cl)
 
@@ -168,135 +324,83 @@ par_grid <- expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
 # Set seed
 set.seed(685)
 
-# Train lasso model without downsampling for air temperature
+# Train lasso model without downsampling for simple air temperature model
 lasso_a1_logloss_train <- train(a1,
+                                data      = training,
+                                method    = "glmnet",
+                                metric    = "logLoss",
+                                tuneGrid  = par_grid,
+                                trControl = control_logloss)
+
+# Run best fit lasso model
+lasso_a1_logloss <- glmnet(x = testing_air_vars, y = testing_resp,
+                           family = "binomial", alpha = 1,
+                           lambda = lasso_a1_logloss_train$bestTune$lambda)
+
+# Train lasso model without downsampling for complex air temperature model
+lasso_a2_logloss_train <- train(a2,
+                                data      = training,
+                                method    = "glmnet",
+                                metric    = "logLoss",
+                                tuneGrid  = par_grid,
+                                trControl = control_logloss)
+
+# Run best fit lasso model
+lasso_a2_logloss <- glmnet(x = testing_air_vars, y = testing_resp,
+                           family = "binomial", alpha = 1,
+                           lambda = lasso_a2_logloss_train$bestTune$lambda)
+
+## Calculate AIC
+#deviance(lasso_a1_logloss) + 2 * dim(testing_air_vars)[2]
+#deviance(lasso_a2_logloss) + 2 * dim(testing_air_vars)[2]
+
+# Save model
+write_rds(lasso_a1_logloss_train, "assessment/lasso_a1_logloss.rds")
+write_rds(lasso_a2_logloss_train, "assessment/lasso_a2_logloss.rds")
+
+# Remove objects
+rm(lasso_a1_logloss, lasso_a1_logloss_train,
+   lasso_a2_logloss, lasso_a2_logloss_train)
+```
+
+```{r: Water temperature w/o downsampling}
+# Train lasso model without downsampling for simple water temperature
+lasso_w1_logloss_train <- train(w1,
                                 data      = training, 
                                 method    = "glmnet", 
                                 metric    = "logLoss",
                                 tuneGrid  = par_grid,
                                 trControl = control_logloss)
 
-# Print results
-lasso_a1_logloss_train
-# The final values used for the model were alpha = 1 and lambda = 1.5e-06.
-
-# Subset summerkill from training data
-lasso_a1_logloss_resp <- lasso_a1_logloss_train$trainingData %>%
-  subset(., select = (".outcome")) %>%
-  mutate(.outcome = as.factor(.outcome)) %>%
-  data.matrix(.)
-
-# Subset variables from training data
-lasso_a1_logloss_vars <- lasso_a1_logloss_train$trainingData %>%
-  subset(., select = c("long", "lat", "season", "population", "mean_air_z", "air_pca", "state")) %>%
-  mutate(season = as.factor(season),
-         state  = as.factor(state)) %>%
-  data.matrix(.)
-
 # Run best fit lasso model
-lasso_a1_logloss <- glmnet(x = lasso_a1_logloss_vars, y = lasso_a1_logloss_resp,
-                           family = "binomial", alpha = 1, lambda = 1.5e-06)
+lasso_w1_logloss <- glmnet(x = testing_water_vars, y = testing_resp,
+                           family = "binomial", alpha = 1,
+                           lambda = lasso_w1_logloss_train$bestTune$lambda)
 
-# Plot coefficients of best model
-plot(lasso_a1_logloss)
-
-# Compare coefficients of best fit model
-coef(lasso_a1_logloss_train$finalModel, lasso_a1_logloss_train$bestTune$lambda)
-coef(lasso_a1_logloss)
-
-# Save coefficients of best fit model
-lasso_a1_logloss_coef <- coef(lasso_a1_logloss)
-
-# Compare with testing data
-#pred <- predict(lasso_a1_logloss, s = 1.5e-06, newx = XXX)
-
-# Save model
-write_rds(lasso_a1_logloss, "assessment/lasso_a1_logloss.rds")
-
-# Remove objects
-rm(lasso_a1_logloss_train,
-   lasso_a1_logloss_resp,
-   lasso_a1_logloss_vars)
-
-######################################################
-
-# Compute R^2 from true and predicted values
-eval_results <- function(true, predicted, df) {
-  SSE <- sum((predicted - true)^2)
-  SST <- sum((true - mean(true))^2)
-  R_square <- 1 - SSE / SST
-  RMSE = sqrt(SSE/nrow(df))
-
-  
-  # Model performance metrics
-data.frame(
-  RMSE = RMSE,
-  Rsquare = R_square
-)
-  
-}
-
-# Prediction and evaluation on train data
-predictions_train <- predict(ridge_reg, s = optimal_lambda, newx = x)
-eval_results(y_train, predictions_train, train)
-
-# Prediction and evaluation on test data
-predictions_test <- predict(ridge_reg, s = optimal_lambda, newx = x_test)
-eval_results(y_test, predictions_test, test)
-
-######################################################
-```
-
-```{r: Water temperature w/o downsampling}
-# Train lasso model without downsampling for air temperature
-lasso_w1_logloss_train <- train(w1,
+# Train lasso model without downsampling for complex water temperature
+lasso_w2_logloss_train <- train(w2,
                                 data      = training, 
                                 method    = "glmnet", 
-                                metric    = "LogLoss",
+                                metric    = "logLoss",
                                 tuneGrid  = par_grid,
                                 trControl = control_logloss)
 
-# Print results
-lasso_w1_logloss_train
-# The final values used for the model were alpha = 1 and lambda = 3.2e-06.
-
-# Subset summerkill from training data
-lasso_w1_logloss_resp <- lasso_w1_logloss_train$trainingData %>%
-  subset(., select = (".outcome")) %>%
-  mutate(.outcome = as.factor(.outcome)) %>%
-  data.matrix(.)
-
-# Subset variables from training data
-lasso_w1_logloss_vars <- lasso_w1_logloss_train$trainingData %>%
-  subset(., select = c("long", "lat", "season", "population", "mean_surf_z", "water_pca", "state")) %>%
-  mutate(season = as.factor(season),
-         state  = as.factor(state)) %>%
-  data.matrix(.)
-
 # Run best fit lasso model
-lasso_w1_logloss <- glmnet(x = lasso_w1_logloss_vars, y = lasso_w1_logloss_resp,
-                           family = "binomial", alpha = 1, lambda = 3.2e-06)
+lasso_w2_logloss <- glmnet(x = testing_water_vars, y = testing_resp,
+                           family = "binomial", alpha = 1,
+                           lambda = lasso_w2_logloss_train$bestTune$lambda)
 
-# Plot coefficients of best model
-#plot(lasso_w1_logloss)
-
-# Compare coefficients of best fit model
-coef(lasso_w1_logloss_train$finalModel, lasso_w1_logloss_train$bestTune$lambda)
-coef(lasso_w1_logloss)
-
-# Save coefficients of best fit model
-lasso_w1_logloss_coef <- coef(lasso_w1_logloss)
+## Calculate AIC
+#deviance(lasso_w1_logloss) + 2 * dim(testing_water_vars)[2]
+#deviance(lasso_w2_logloss) + 2 * dim(testing_water_vars)[2]
 
 # Save model
-write_rds(lasso_w1_logloss, "assessment/lasso_w1_logloss.rds")
-
-# Compare with testing data
-#pred <- predict(lasso_w1, s = 1.5e-06, newx = XXX)
+write_rds(lasso_w1_logloss_train, "assessment/lasso_w1_logloss.rds")
+write_rds(lasso_w2_logloss_train, "assessment/lasso_w2_logloss.rds")
 
 # Remove objects
-rm(lasso_w1_logloss_train,
-   lasso_w1_logloss_resp,
-   lasso_w1_logloss_vars)
+rm(lasso_w1_logloss, lasso_w1_logloss_train,
+   lasso_w2_logloss, lasso_w2_logloss_train)
 ```
 
 ```{r: Air temperature w/ downsampling}
@@ -308,109 +412,84 @@ rm(lasso_w1_logloss_train,
 par_grid <-  expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
 
 # Set seed
-set.seed(685)
+set.seed(231)
 
-# Train lasso model without downsampling for air temperature
+# Train lasso model without downsampling for simple air temperature
 lasso_a1_logloss_ds_train <- train(a1,
                                    data      = training, 
                                    method    = "glmnet", 
-                                   metric    = "LogLoss",
+                                   metric    = "logLoss",
                                    tuneGrid  = par_grid,
                                    trControl = control_logloss_ds)
 
-# Print results
-lasso_a1_logloss_ds_train
-# The final values used for the model were alpha = 1 and lambda = 1.5e-06.
+# Run best fit lasso model
+lasso_a1_logloss_ds <- glmnet(x = testing_air_vars, y = testing_resp,
+                              family = "binomial", alpha = 1,
+                              lambda = lasso_a1_logloss_ds_train$bestTune$lambda)
 
-# Subset summerkill from training data
-lasso_a1_logloss_ds_resp <- lasso_a1_logloss_ds_train$trainingData %>%
-  subset(., select = (".outcome")) %>%
-  mutate(.outcome = as.factor(.outcome)) %>%
-  data.matrix(.)
-
-# Subset variables from training data
-lasso_a1_logloss_ds_vars <- lasso_a1_logloss_ds_train$trainingData %>%
-  subset(., select = c("long", "lat", "season", "population", "mean_air_z", "air_pca", "state")) %>%
-  mutate(season = as.factor(season),
-         state  = as.factor(state)) %>%
-  data.matrix(.)
+# Train lasso model without downsampling for complex air temperature
+lasso_a2_logloss_ds_train <- train(a2,
+                                   data      = training, 
+                                   method    = "glmnet", 
+                                   metric    = "logLoss",
+                                   tuneGrid  = par_grid,
+                                   trControl = control_logloss_ds)
 
 # Run best fit lasso model
-lasso_a1_logloss_ds <- glmnet(x = lasso_a1_logloss_ds_vars, y = lasso_a1_logloss_ds_resp,
-                              family = "binomial", alpha = 1, lambda = 1.5e-06)
-
-# Plot coefficients of best model
-#plot(lasso_a1_logloss_ds)
-
-# Compare coefficients of best fit model
-coef(lasso_a1_logloss_ds_train$finalModel, lasso_a1_logloss_ds_train$bestTune$lambda)
-coef(lasso_a1_logloss_ds)
-
-# Save coefficients of best fit model
-lasso_a1_logloss_ds_coef <- coef(lasso_a1_logloss_ds)
-
-# Compare with testing data
-#pred <- predict(lasso_a1_logloss_ds, s = 1.5e-06, newx = XXX)
+lasso_a2_logloss_ds <- glmnet(x = testing_air_vars, y = testing_resp,
+                              family = "binomial", alpha = 1,
+                              lambda = lasso_a2_logloss_ds_train$bestTune$lambda)
+# Calculate AIC
+#deviance(lasso_a1_logloss_ds) + 2 * dim(testing_air_vars)[2]
+#deviance(lasso_a2_logloss_ds) + 2 * dim(testing_air_vars)[2]
 
 # Save model
-write_rds(lasso_a1_logloss_ds, "assessment/lasso_a1_logloss_ds.rds")
+write_rds(lasso_a1_logloss_ds_train, "assessment/lasso_a1_logloss_ds.rds")
+write_rds(lasso_a2_logloss_ds_train, "assessment/lasso_a2_logloss_ds.rds")
 
 # Remove objects
-rm(lasso_a1_logloss_ds_train,
-   lasso_a1_logloss_ds_resp,
-   lasso_a1_logloss_ds_vars)
+rm(lasso_a1_logloss_ds, lasso_a1_logloss_ds_train,
+   lasso_a2_logloss_ds, lasso_a2_logloss_ds_train)
 ```
 
 ```{r: Water temperature w/ downsampling}
-# Train lasso model without downsampling for air temperature
+# Train lasso model without downsampling for simple water temperature
 lasso_w1_logloss_ds_train <- train(w1,
                                    data      = training, 
                                    method    = "glmnet", 
-                                   metric    = "LogLoss",
+                                   metric    = "logLoss",
                                    tuneGrid  = par_grid,
                                    trControl = control_logloss_ds)
 
-# Print results
-lasso_w1_logloss_ds_train
-# The final values used for the model were alpha = 1 and lambda = 3.2e-06.
+# Run best fit lasso model
+lasso_w1_logloss_ds <- glmnet(x = testing_water_vars, y = testing_resp,
+                              family = "binomial", alpha = 1,
+                              lambda = lasso_w1_logloss_ds_train$bestTune$lambda)
 
-# Subset summerkill from training data
-lasso_w1_ds_resp <- lasso_w1_logloss_ds_train$trainingData %>%
-  subset(., select = (".outcome")) %>%
-  mutate(.outcome = as.factor(.outcome)) %>%
-  data.matrix(.)
-
-# Subset variables from training data
-lasso_w1_ds_vars <- lasso_w1_logloss_ds_train$trainingData %>%
-  subset(., select = c("long", "lat", "season", "population", "mean_surf_z", "water_pca", "state")) %>%
-  mutate(season = as.factor(season),
-         state  = as.factor(state)) %>%
-  data.matrix(.)
+# Train lasso model without downsampling for complex water temperature
+lasso_w2_logloss_ds_train <- train(w2,
+                                   data      = training, 
+                                   method    = "glmnet", 
+                                   metric    = "logLoss",
+                                   tuneGrid  = par_grid,
+                                   trControl = control_logloss_ds)
 
 # Run best fit lasso model
-lasso_w1_logloss_ds <- glmnet(x = lasso_w1_ds_vars, y = lasso_w1_ds_resp,
-                              family = "binomial", alpha = 1, lambda = 3.2e-06)
+lasso_w2_logloss_ds <- glmnet(x = testing_water_vars, y = testing_resp,
+                              family = "binomial", alpha = 1,
+                              lambda = lasso_w2_logloss_ds_train$bestTune$lambda)
 
-# Plot coefficients of best model
-#plot(lasso_w1)
-
-# Compare coefficients of best fit model
-coef(lasso_w1_logloss_ds_train$finalModel, lasso_w1_logloss_ds_train$bestTune$lambda)
-coef(lasso_w1_logloss_ds)
-
-# Save coefficients of best fit model
-lasso_w1_logloss_ds_coef <- coef(lasso_w1_logloss_ds)
-
-# Compare with testing data
-#pred <- predict(lasso_w1, s = 1.5e-06, newx = XXX)
+# Calculate AIC
+#deviance(lasso_w1_logloss_ds) + 2 * dim(testing_water_vars)[2]
+#deviance(lasso_w2_logloss_ds) + 2 * dim(testing_water_vars)[2]
 
 # Save model
-write_rds(lasso_w1_logloss_ds, "assessment/lasso_w1_logloss_ds.rds")
+write_rds(lasso_w1_logloss_ds_train, "assessment/lasso_w1_logloss_ds.rds")
+write_rds(lasso_w2_logloss_ds_train, "assessment/lasso_w2_logloss_ds.rds")
 
 # Remove objects
-rm(lasso_w1_logloss_ds_train,
-   lasso_w1_logloss_ds_resp,
-   lasso_w1_logloss_ds_vars)
+rm(lasso_w1_logloss_ds, lasso_w1_logloss_ds_train,
+   lasso_w2_logloss_ds, lasso_w2_logloss_ds_train)
 ```
 
 ### Step 6: Ridge logistic regressions
@@ -418,17 +497,17 @@ rm(lasso_w1_logloss_ds_train,
 Ridge models with different lambdas.
 
 ```{r: Air temperature w/o downsampling}
-# Create grid of parameters
-par_grid <-  expand.grid(alpha = 0, lambda = seq(3.5e-7, 1.5e-5, length.out = 6))
-
 ## Magic (for remote computing)
 #cl <- makePSOCKcluster(6)
 #registerDoParallel(cl)
 
+# Create grid of parameters
+par_grid <-  expand.grid(alpha = 0, lambda = seq(3.5e-7, 1.5e-5, length.out = 6))
+
 # Set seed
 set.seed(475)
 
-# Train ridge model without downsampling
+# Train ridge model without downsampling for simple air temperature
 ridge_a1_logloss_train <- train(a1, 
                                 data      = training, 
                                 method    = "glmnet",
@@ -436,51 +515,39 @@ ridge_a1_logloss_train <- train(a1,
                                 tuneGrid  = par_grid,
                                 trControl = control_logloss)
 
-# Print results
-ridge_a1_logloss_train
-# The final values used for the model were alpha = 0 and lambda = 9.14e-06.
+# Run best fit lasso model
+ridge_a1_logloss <- glmnet(x = testing_air_vars, y = testing_resp,
+                           family = "binomial", alpha = 1,
+                           lambda = ridge_a1_logloss_train$bestTune$lambda)
 
-# Subset summerkill from training data
-ridge_a1_logloss_resp <- ridge_a1_logloss_train$trainingData %>%
-  subset(., select = (".outcome")) %>%
-  mutate(.outcome = as.factor(.outcome)) %>%
-  data.matrix(.)
-
-# Subset variables from training data
-ridge_a1_logloss_vars <- ridge_a1_logloss_train$trainingData %>%
-  subset(., select = c("long", "lat", "season", "population", "mean_air_z", "air_pca", "state")) %>%
-  mutate(season = as.factor(season),
-         state  = as.factor(state)) %>%
-  data.matrix(.)
+# Train ridge model without downsampling for complex air temperature
+ridge_a2_logloss_train <- train(a2, 
+                                data      = training, 
+                                method    = "glmnet",
+                                metric    = "logLoss",
+                                tuneGrid  = par_grid,
+                                trControl = control_logloss)
 
 # Run best fit lasso model
-ridge_a1_logloss <- glmnet(x = ridge_a1_logloss_vars, y = ridge_a1_logloss_resp,
-                           family = "binomial", alpha = 0, lambda = 9.14e-06)
+ridge_a2_logloss <- glmnet(x = testing_air_vars, y = testing_resp,
+                           family = "binomial", alpha = 1,
+                           lambda = ridge_a2_logloss_train$bestTune$lambda)
 
-# Plot coefficients of best model
-#plot(ridge_a1_logloss)
-
-# Compare coefficients of best fit model
-coef(ridge_a1_logloss_train$finalModel, ridge_a1_logloss_train$bestTune$lambda)
-coef(ridge_a1_logloss)
-
-# Save coefficients of best fit model
-ridge_a1_logloss_coef <- coef(ridge_a1_logloss)
-
-# Compare with testing data
-#pred <- predict(ridge_a1_logloss, s = 3.2e-06, newx = XXX)
+## Calculate AIC
+#deviance(ridge_a1_logloss) + 2 * dim(testing_air_vars)[2]
+#deviance(ridge_a2_logloss) + 2 * dim(testing_air_vars)[2]
 
 # Save model
-write_rds(ridge_a1_logloss, "assessment/ridge_a1_logloss.rds")
+write_rds(ridge_a1_logloss_train, "assessment/ridge_a1_logloss.rds")
+write_rds(ridge_a2_logloss_train, "assessment/ridge_a2_logloss.rds")
 
 # Remove objects
-rm(ridge_a1_logloss_train,
-   ridge_a1_logloss_resp,
-   ridge_a1_logloss_vars)
+rm(ridge_a1_logloss, ridge_a1_logloss_train,
+   ridge_a2_logloss, ridge_a2_logloss_train)
 ```
 
 ```{r: Water temperature w/o downsampling}
-# Train ridge model without downsampling
+# Train ridge model without downsampling for simple water temperature
 ridge_w1_logloss_train <- train(w1, 
                                 data      = training, 
                                 method    = "glmnet",
@@ -488,207 +555,161 @@ ridge_w1_logloss_train <- train(w1,
                                 tuneGrid  = par_grid,
                                 trControl = control_logloss)
 
-# Print results
-ridge_w1_logloss_train
-# The final values used for the model were alpha = 0 and lambda = 9.14e-06.
+# Run best fit lasso model
+ridge_w1_logloss <- glmnet(x = testing_water_vars, y = testing_resp,
+                           family = "binomial", alpha = 1,
+                           lambda = ridge_w1_logloss_train$bestTune$lambda)
 
-# Subset summerkill from training data
-ridge_w1_logloss_resp <- ridge_w1_logloss_train$trainingData %>%
-  subset(., select = (".outcome")) %>%
-  mutate(.outcome = as.factor(.outcome)) %>%
-  data.matrix(.)
-
-# Subset variables from training data
-ridge_w1_logloss_vars <- ridge_w1_logloss_train$trainingData %>%
-  subset(., select = c("long", "lat", "season", "population", "mean_surf_z", "water_pca", "state")) %>%
-  mutate(season = as.factor(season),
-         state  = as.factor(state)) %>%
-  data.matrix(.)
+# Train ridge model without downsampling for complex water temperature
+ridge_w2_logloss_train <- train(w2, 
+                                data      = training, 
+                                method    = "glmnet",
+                                metric    = "logLoss",
+                                tuneGrid  = par_grid,
+                                trControl = control_logloss)
 
 # Run best fit lasso model
-ridge_w1_logloss <- glmnet(x = ridge_w1_logloss_vars, y = ridge_w1_logloss_resp,
-                           family = "binomial", alpha = 0, lambda = 9.14e-06)
+ridge_w2_logloss <- glmnet(x = testing_water_vars, y = testing_resp,
+                           family = "binomial", alpha = 1,
+                           lambda = ridge_w2_logloss_train$bestTune$lambda)
 
-# Plot coefficients of best model
-#plot(ridge_w1_logloss)
-
-# Compare coefficients of best fit model
-coef(ridge_w1_logloss_train$finalModel, ridge_w1_logloss_train$bestTune$lambda)
-coef(ridge_w1_logloss)
-
-# Save coefficients of best fit model
-ridge_w1_logloss_coef <- coef(ridge_w1_logloss)
-
-# Compare with testing data
-#pred <- predict(ridge_w1_logloss, s = 9.14e-06, newx = XXX)
+## Calculate AIC
+#deviance(ridge_w1_logloss) + 2 * dim(testing_water_vars)[2]
+#deviance(ridge_w2_logloss) + 2 * dim(testing_water_vars)[2]
 
 # Save model
-write_rds(ridge_w1_logloss, "assessment/ridge_w1_logloss.rds")
+write_rds(ridge_w1_logloss_train, "assessment/ridge_w1_logloss.rds")
+write_rds(ridge_w2_logloss_train, "assessment/ridge_w2_logloss.rds")
 
 # Remove objects
-rm(ridge_w1_logloss_train,
-   ridge_w1_logloss_resp,
-   ridge_w1_logloss_vars)
+rm(ridge_w1_logloss, ridge_w1_logloss_train,
+   ridge_w2_logloss, ridge_w2_logloss_train)
 ```
 
 ```{r: Air temperature w/ downsampling}
-# Train ridge model with downsampling
+# Train ridge model with downsampling for simple air temperature
 ridge_a1_logloss_ds_train <- train(a1, 
+                                data      = training, 
+                                method    = "glmnet",
+                                metric    = "logLoss",
+                                tuneGrid  = par_grid,
+                                trControl = control_logloss)
+
+# Run best fit lasso model
+ridge_a1_logloss_ds <- glmnet(x = testing_air_vars, y = testing_resp,
+                              family = "binomial", alpha = 1,
+                              lambda = ridge_a1_logloss_ds_train$bestTune$lambda)
+
+# Train ridge model with downsampling for complex air temperature
+ridge_a2_logloss_ds_train <- train(a2, 
                                    data      = training, 
                                    method    = "glmnet",
                                    metric    = "logLoss",
                                    tuneGrid  = par_grid,
-                                   trControl = control_logloss_ds)
-
-# Print results
-ridge_a1_logloss_ds_train
-# The final values used for the model were alpha = 0 and lambda = 1.5e-05.
-
-# Subset summerkill from training data
-ridge_a1_logloss_ds_resp <- ridge_a1_logloss_ds_train$trainingData %>%
-  subset(., select = (".outcome")) %>%
-  mutate(.outcome = as.factor(.outcome)) %>%
-  data.matrix(.)
-
-# Subset variables from training data
-ridge_a1_logloss_ds_vars <- ridge_a1_logloss_ds_train$trainingData %>%
-  subset(., select = c("long", "lat", "season", "population", "mean_air_z", "air_pca", "state")) %>%
-  mutate(season = as.factor(season),
-         state  = as.factor(state)) %>%
-  data.matrix(.)
+                                   trControl = control_logloss)
 
 # Run best fit lasso model
-ridge_a1_logloss_ds <- glmnet(x = ridge_a1_logloss_ds_vars, y = ridge_a1_logloss_ds_resp,
-                              family = "binomial", alpha = 0, lambda = 1.5e-05)
+ridge_a2_logloss_ds <- glmnet(x = testing_air_vars, y = testing_resp,
+                              family = "binomial", alpha = 1,
+                              lambda = ridge_a2_logloss_ds_train$bestTune$lambda)
 
-# Plot coefficients of best model
-plot(ridge_a1_logloss_ds)
-
-# Compare coefficients of best fit model
-coef(ridge_a1_logloss_ds_train$finalModel, ridge_a1_logloss_ds_train$bestTune$lambda)
-coef(ridge_a1_logloss_ds)
-
-# Save coefficients of best fit model
-ridge_a1_logloss_ds_coef <- coef(ridge_a1_logloss_ds_train)
-
-# Compare with testing data
-#pred <- predict(ridge_a1_logloss_ds, s = 3.2e-06, newx = XXX)
+## Calculate AIC
+#deviance(ridge_a1_logloss_ds) + 2 * dim(testing_air_vars)[2]
+#deviance(ridge_a2_logloss_ds) + 2 * dim(testing_air_vars)[2]
 
 # Save model
-write_rds(ridge_a1_logloss_ds, "assessment/ridge_a1_logloss_ds.rds")
+write_rds(ridge_a1_logloss_ds_train, "assessment/ridge_a1_logloss_ds.rds")
+write_rds(ridge_a2_logloss_ds_train, "assessment/ridge_a2_logloss_ds.rds")
 
 # Remove objects
-rm(ridge_a1_logloss_ds_train,
-   ridge_a1_logloss_ds_resp,
-   ridge_a1_logloss_ds_vars)
+rm(ridge_a1_logloss_ds, ridge_a1_logloss_ds_train,
+   ridge_a2_logloss_ds, ridge_a2_logloss_ds_train)
 ```
 
 ```{r: Water temperature w/ downsampling}
-# Train ridge model with downsampling
+# Train ridge model without downsampling for simple water temperature
 ridge_w1_logloss_ds_train <- train(w1, 
                                    data      = training, 
                                    method    = "glmnet",
                                    metric    = "logLoss",
                                    tuneGrid  = par_grid,
-                                   trControl = control_logloss_ds)
-
-# Print results
-ridge_w1_logloss_ds_train
-# The final values used for the model were alpha = 0 and lambda = 1.5e-05.
-
-# Subset summerkill from training data
-ridge_w1_logloss_ds_resp <- ridge_w1_logloss_ds_train$trainingData %>%
-  subset(., select = (".outcome")) %>%
-  mutate(.outcome = as.factor(.outcome)) %>%
-  data.matrix(.)
-
-# Subset variables from training data
-ridge_w1_logloss_ds_vars <- ridge_w1_logloss_ds_train$trainingData %>%
-  subset(., select = c("long", "lat", "season", "population", "mean_surf_z", "water_pca", "state")) %>%
-  mutate(season = as.factor(season),
-         state  = as.factor(state)) %>%
-  data.matrix(.)
+                                   trControl = control_logloss)
 
 # Run best fit lasso model
-ridge_w1_logloss_ds <- glmnet(x = ridge_w1_logloss_ds_vars, y = ridge_w1_logloss_ds_resp,
-                              family = "binomial", alpha = 0, lambda = 1.5e-05)
+ridge_w1_logloss_ds <- glmnet(x = testing_water_vars, y = testing_resp,
+                              family = "binomial", alpha = 1,
+                              lambda = ridge_w1_logloss_ds_train$bestTune$lambda)
 
-# Plot coefficients of best model
-plot(ridge_w1_logloss_ds)
+# Train ridge model without downsampling for complex water temperature
+ridge_w2_logloss_ds_train <- train(w2, 
+                                   data      = training, 
+                                   method    = "glmnet",
+                                   metric    = "logLoss",
+                                   tuneGrid  = par_grid,
+                                   trControl = control_logloss)
 
-# Compare coefficients of best fit model
-coef(ridge_w1_logloss_ds_train$finalModel, ridge_w1_logloss_ds_train$bestTune$lambda)
-coef(ridge_w1_logloss_ds)
+# Run best fit lasso model
+ridge_w2_logloss_ds <- glmnet(x = testing_water_vars, y = testing_resp,
+                              family = "binomial", alpha = 1,
+                              lambda = ridge_w2_logloss_ds_train$bestTune$lambda)
 
-# Save coefficients of best fit model
-ridge_w1_logloss_ds_coef <- coef(ridge_w1_logloss_ds_train)
-
-# Compare with testing data
-#pred <- predict(ridge_w1_logloss_ds, s = 1.5e-05, newx = XXX)
+## Calculate AIC
+#deviance(ridge_w1_logloss_ds) + 2 * dim(testing_water_vars)[2]
+#deviance(ridge_w2_logloss_ds) + 2 * dim(testing_water_vars)[2]
 
 # Save model
-write_rds(ridge_w1_logloss_ds, "assessment/ridge_w1_logloss_ds.rds")
+write_rds(ridge_w1_logloss_ds_train, "assessment/ridge_w1_logloss_ds.rds")
+write_rds(ridge_w2_logloss_ds_train, "assessment/ridge_w2_logloss_ds.rds")
 
 # Remove objects
-rm(ridge_w1_logloss_ds_train,
-   ridge_w1_logloss_ds_resp,
-   ridge_w1_logloss_ds_vars)
+rm(ridge_w1_logloss_ds, ridge_w1_logloss_ds_train,
+   ridge_w2_logloss_ds, ridge_w2_logloss_ds_train)
 ```
 
 ### Step 7: Logistic regressions with random effects
 
 ```{r: First random effects logistic}
-## Random effects model for water temperature
-#w1_re <- summerkill ~ long + lat + season + variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-#  cumulative_above_10 + ice_duration + water_pca + (1 | site_id)
-#
-## Magic
-#re_w1 <- glmer(w1_re,
-#               data = training, 
-#               family = binomial, 
-#               control = glmerControl(optimizer = "bobyqa"),
-#               nAGQ = 10)
-#
-#### Warning messages:
-#### 1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-####   unable to evaluate scaled gradient
-#### 2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
-####    Hessian is numerically singular: parameters are not uniquely determined
-#   
-## Magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
+# Random effects model for air temperature
+a1_re <- summerkill ~ long + lat + season + state + l3_code +
+  mean_air_z + air_pca + (1 | site_id)
+
+# Random effects model for water temperature
+w1_re <- summerkill ~ long + lat + season + state + l3_code +
+  variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
+  cumulative_above_10 + ice_duration + water_pca + (1 | site_id)
+
+# Run model for air temperature
+re_a1 <- glmer(a1_re,
+               data    = training, 
+               family  = binomial, 
+               control = glmerControl(optimizer = "bobyqa"),
+               nAGQ    = 10)
+
+# Run model for water temperature
+re_w1 <- glmer(w1_re,
+               data    = training, 
+               family  = binomial, 
+               control = glmerControl(optimizer = "bobyqa"),
+               nAGQ    = 10)
+
+
+re_w1 <- w1_re
+re_a1 <- a1_re
+
+## Might not need (changed from lmer to glmer; removed unused argument (REML = FALSE))
 #rf_w1 <- glmer(w1_re, 
 #               data = training,
 #               family = binomial,
 #               control = glmerControl(optimizer = 'optimx',
 #                                      optCtrl = list(method = 'L-BFGS-B')))
-#
-## Random effects model for air temperature
-#a1_re <- summerkill ~ long + lat + season + air_pca + (1 | site_id)
-#   
-## Magic
-#re_a1 <- glmer(a1_re,
-#               data = training, 
-#               family = binomial, 
-#               control = glmerControl(optimizer = "bobyqa"),
-#               nAGQ = 10)
-#
-#
-## Magic (changed from lmer to glmer; removed unused argument (REML = FALSE))
-#rf_a1 <- glmer(a1_re, 
-#               data = training,
-#               family = binomial,
-#               control = glmerControl(optimizer = 'optimx',
-#                                      optCtrl = list(method = 'L-BFGS-B')))
-#
-## Save models
-#write_rds(re_w1, "assessment/re_w1.rds")
-#write_rds(rf_w1, "assessment/rf_w1.rds")
-#write_rds(re_a1, "assessment/re_a1.rds")
-#write_rds(rf_a1, "assessment/rf_a1.rds")
-#
-## Remove models
-#rm(re_w1, rf_w1,
-#   re_a1, rf_a1)
+
+# Save models
+write_rds(re_a1, "assessment/re_a1.rds")
+write_rds(re_w1, "assessment/rf_w1.rds")
+
+# Remove models
+rm(re_a1, a1_re,
+   re_w1, w1_re)
 ```
 
 ######################################

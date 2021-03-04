@@ -2,5 +2,10 @@
 .Rhistory
 .RData
 .Ruserdata
-data/
+data/models
+data/processed
+data/raw
+data/models.zip
+data/processed.zip
+data/raw.zip
 2020_MME_Temp.Rproj

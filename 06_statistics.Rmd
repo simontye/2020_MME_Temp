@@ -7,7 +7,7 @@ output: github_document
 
 ### Background
 
-These are the same statistical tests that were ran in Till et al., (2019).
+XXX
 
 ### Step 1: Load packages and data
 
@@ -23,29 +23,387 @@ library(DescTools)
 library(spdep)
 library(readr)
 library(dplyr)
+library(ggpubr)
+library(rstatix)
+
+# Reset global environment
+rm(list = ls())
+
+# Change working directory
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/")
 
 # Load data
 df.historical <- read_csv('data/processed/df_historical.csv')
-df.future     <- read_csv('data/processed/df_future.csv')
-df.snow       <- read_csv('data/processed/df_snow.csv') 
+#df.future     <- read_csv('data/processed/df_future.csv')
+#df.snow       <- read_csv('data/processed/df_snow.csv') 
 
 #snow_data$month <- tolower(month.abb[as.numeric(snow_data$Month)])
 #snow_data$year  <- snow_data$Year
 ```
 
-### Step 2:Summerkill statistics
+### Step 2: Summary statistics
 
-```{r: Summerkill statistics}
-# Black magic
-fig1ab.data <- df.historical %>% 
+```{r: Fishkill counts}
+# Count number of fishkills across states
+df.historical %>%
+  count(.$anthropogenic + .$infectious + .$summerkill + .$winterkill + .$unknown)
+
+# Count number of fishkills in MN
+df.historical %>%
+  subset(., state == "minnesota") %>%
+  count(.$anthropogenic + .$infectious + .$summerkill + .$winterkill + .$unknown)
+
+# Count number of fishkills in WI
+df.historical %>%
+  subset(., state == "wisconsin") %>%
+  count(.$anthropogenic + .$infectious + .$summerkill + .$winterkill + .$unknown)
+
+# Count number of unique lakes (site_id) with fishkills
+df.historical %>%
+  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  group_by(site_id) %>%
+  summarize(count = n())
+
+##########################
+
+# Count number of anthropogenic fishkills
+df.historical %>%
+  count(.$anthropogenic)
+
+# Count number of infectious fishkills
+df.historical %>%
+  count(.$infectious)
+
+# Count number of summerkills
+df.historical %>%
+  count(.$summerkill)
+
+# Count number of winterkills
+df.historical %>%
+  count(.$winterkill)
+
+# Count number of unknown fishkills
+df.historical %>%
+  count(.$unknown)
+
+# Count number of unique lakes (site_id) with summerkills
+df.historical %>%
+  subset(., summerkill >= 1) %>%
+  group_by(site_id) %>%
+  summarize(count = n())
+```
+
+```{r: Summerkills}
+# Create summerkills dataframe
+summerkills <- df.historical %>%
   filter(month %in% c('6', '7', '8', '9')) %>%
-  mutate(cause.category.4 = replace(as.character(cause.category.4), which(is.na(cause.category.4)), 'Summer Non-event')) %>%
-  mutate(infectious = ifelse(cause.category.4 == 'infectious agent', 1, 0))%>% 
-  mutate(summerkill = ifelse(cause.category.4 == 'summerkill', 1, 0))
+  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
+  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+                                        ifelse(infectious == 1, "Infectious",
+                                               ifelse(summerkill == 1, "Summerkill",
+                                                      ifelse(winterkill == 1, "Winterkill",
+                                                             ifelse(unknown == 1, "Unknown", "")))))) %>%
+  dplyr::mutate(fishkill       = as.factor(fishkill),
+                fishkill_cause = as.factor(fishkill_cause)) %>%
+  subset(., fishkill_cause == "Summerkill" | fishkill_cause == "Summer non-event")
+
+# Create boxplot for mean_surf_z
+ggplot() +
+  geom_boxplot(data = summerkills, aes(x = fishkill_cause, y = mean_surf_z), outlier.alpha = 1)
+
+# Create boxplot for mean_air
+ggplot() +
+  geom_boxplot(data = summerkills, aes(x = fishkill_cause, y = mean_air), outlier.alpha = 1)
+
+##########################
+
+# Create winterkills dataframe
+winterkills <- df.historical %>%
+  filter(month %in% c('12', '1', '2', '3')) %>%
+  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
+  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+                                        ifelse(infectious == 1, "Infectious",
+                                               ifelse(summerkill == 1, "Summerkill",
+                                                      ifelse(winterkill == 1, "Winterkill",
+                                                             ifelse(unknown == 1, "Unknown", "Winter non-event")))))) %>%
+  dplyr::mutate(fishkill       = as.factor(fishkill),
+                fishkill_cause = as.factor(fishkill_cause)) %>%
+  subset(., fishkill_cause == "Winterkill" | fishkill_cause == "Winter non-event")
+
+
+# Create boxplot for mean_surf_z
+ggplot() +
+  geom_boxplot(data = winterkills, aes(x = fishkill_cause, y = mean_surf_z), outlier.alpha = 1)
+
+# Create boxplot for mean_air
+ggplot() +
+  geom_boxplot(data = winterkills, aes(x = fishkill_cause, y = mean_air), outlier.alpha = 1)
+
+
+
+
+
+
+
+fig1a_data <- historical_data %>%
+  mutate(cause.category.4 = as.factor(replace(as.character(cause.category.4), which(is.na(cause.category.4)), 'Summer Non-event')),
+         cause.category.4 = fct_recode(cause.category.4,
+                                       "Infectious Agent" = "infectious agent",
+                                       "Summerkill"       = "summerkill"))
+
+fig1a_data$sig <- factor(ifelse(fig1a_data$cause.category.4 == 'Summerkill', 'p<.05', 'p>.05'),levels = c('p>.05', 'p<.05'))
+
+boxplot_a <- fig1a_data %>%
+  filter(month %in% c("jul", "jun", "aug", "sep")) %>%
+  filter(cause.category.4 %in% c('Infectious Agent', "Summerkill", "Summer Non-event")) %>%   
+  ggplot(aes(y = mean_surf, x = cause.category.4)) +
+  theme_tufte() +  
+  ylab('Mean Surf. Temp. (°C)') +
+  theme(text = element_text(size=13),
+        axis.text = element_text(size=13),
+        legend.justification = c(1, -0.4), 
+        legend.position = c(0.4, 0),
+        legend.box.margin=margin(c(50,50,50,50)),
+        axis.line = element_line(colour = "black", 
+                                 size = 0.5, linetype = "solid"),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  xlab(NULL) +
+  geom_boxplot(outlier.alpha = 0.1, aes(fill = sig)) + 
+  ggtitle('a') +
+  theme(text = element_text(family = 'sans'))+
+  scale_fill_manual(values = c('grey', 'gold'), guide = guide_legend(title = NULL))
+
+boxplot_c <- fig1a_data %>%
+  filter(month == 'jul' | month == 'jun' | month == 'aug' | month == 'sep') %>%
+  filter(cause.category.4 == 'Summerkill' | cause.category.4 == 'Infectious Agent' | cause.category.4 == 'Summer Non-event') %>%   
+  ggplot(aes(y = mean_surf_z,x = cause.category.4)) +
+  theme_tufte() +
+  ylab('Z-score Mean Surf. Temp') +
+  guides(fill = FALSE) +
+  theme(text = element_text(size = 13, family = 'sans'), 
+        axis.text = element_text(size = 11),
+        axis.line = element_line(colour = "black", 
+                                 size = 0.5, linetype = "solid")) +
+  geom_boxplot(outlier.alpha = 0.1, aes(fill = sig)) +
+  xlab(NULL) +
+  geom_hline(yintercept = 0, alpha = 0.5) + 
+  ggtitle('c') +
+  scale_fill_manual(values = c('grey', 'gold'), guide = guide_legend(title = 'T-test'))
+
+
+
+
+# Winter
+
+fig1b_data <- historical_data %>%
+  mutate(cause.category.4 = replace(as.character(cause.category.4), which(is.na(cause.category.4)), 'Winter Non-event'),
+         cause.category.4 = fct_recode(cause.category.4,
+                                       "Winterkill" = "winterkill"))
+
+
+fig1b_data$sig <- ifelse(fig1b_data$cause.category.4 == 'Winterkill', 'p<.05', 'p>.05')
+fig1b_data$sig <- factor(fig1b_data$sig, levels = c('p>.05', 'p<.05'))
+
+
+boxplot_b <- fig1b_data%>%
+  filter(month == 'dec' | month == 'jan' | month == 'feb' | month == 'mar') %>%
+  filter(cause.category.4 == 'Winterkill' | cause.category.4 == 'Winter Non-event') %>%
+  ggplot(aes(y = mean_surf,x = cause.category.4)) +
+  theme_tufte() +
+  ylab(NULL)+
+  xlab(NULL)+
+  theme(text = element_text(size=13), 
+        axis.text = element_text(size = 13),
+        axis.line = element_line(colour = "black", 
+                   size = 0.5, linetype = "solid"), 
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank())+
+  geom_boxplot(outlier.alpha = 0.1, aes(fill = sig))+ 
+  guides(fill = FALSE)+ 
+  ggtitle('b') +
+  theme(text = element_text(family = 'sans'))+
+  scale_fill_manual(values = c('grey', 'grey'))
+
+boxplot_d <- fig1b_data %>%
+  filter(month == 'dec' | month == 'jan' | month == 'feb' | month == 'mar') %>%
+  filter(cause.category.4 == 'Winterkill' | cause.category.4 == 'Winter Non-event') %>%   
+  ggplot(aes(y = mean_surf_z,x = cause.category.4)) +
+  theme_tufte() +
+  xlab('Category of Killtype')+
+  geom_boxplot(outlier.alpha = 0.1, aes(fill = sig)) +
+  theme(text = element_text(size=13),
+        axis.text = element_text(size = 11),
+        axis.line = element_line(colour = "black", 
+                   size = 0.5, linetype = "solid"))+
+  xlab(NULL) +
+  ylab(NULL)+
+  ylim(-2.5,2) +
+  geom_hline(yintercept = 0, alpha = 0.5)+
+  scale_fill_brewer()+ 
+  guides(fill = FALSE)+ 
+  ggtitle('d') +
+  theme(text = element_text(family = 'sans'))+
+  scale_fill_manual(values = c('grey', 'grey'))
+
+
+xbox <- grid.arrange(boxplot_a, boxplot_b,ncol = 2, widths = c(6, 3.6))
+ybox <- grid.arrange(boxplot_c, boxplot_d, ncol = 2, widths = c(6, 3.6))
+
+p <- grid.arrange(xbox, ybox)
+ggsave("figures/boxplot_mean_surf_temp.png", p, width = 8, height = 5, dpi = 300)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## ANOVA or GLM or something before Dunnett's tests
+# one-way anova or 
+
+# Boxplot
+ggboxplot(summerkills, x = "summerkill", y = "max_surf")
+
+# Linear model
+model.sum.w.max <- lm(max_surf ~ summerkill, data = summerkills)
+
+# Linear model
+model.all <- lm(summerkill ~ lat + long + season + population + state + l3_code +
+  max_bot + mean_bot + max_surf + mean_surf +
+  max_bot_z + mean_bot_z + max_surf_z + mean_surf_z +
+  layer_diff + water_quad_temp + peak_temp + ice_duration +
+  cumulative_above_0 + cumulative_above_5 + cumulative_above_10, data = df.historical)
+
+summary(model.all)
+
+# QQ plot
+ggqqplot(residuals(model.sum.w.max))
+
+# Shapiro Wilk's test
+#shapiro_test(residuals(model.sum.w.max)) # normal if insignficant
+
+# Kolmogorov-Smirnov test 
+ks.test(x = df.historical$summerkill, y =df.historical$max_surf, alternative = "two.sided")
+
+
+# Plot
+plot(model.sum.w.max, 1)
+
+# Levene's test
+PlantGrowth %>% levene_test(summerkill ~ group)
+
+
+
+
+summerkill ~ mean_surf_z
+summerkill ~ mean_surf
+summerkill ~ max_surf_z
+summerkill ~ max_surf
+
+fishkill ~ temp ~ season
+
+# two-way anova
+# Figure 1 from Till
+#fig1ab.data <- df.historical %>% 
+#  filter(month %in% c('6', '7', '8', '9')) %>%
+#  mutate(cause.category.4 = replace(as.character(cause.category.4), #which(is.na(cause.category.4)), 'Summer Non-event')) %>%
+#  mutate(infectious = ifelse(cause.category.4 == 'infectious', 1, 0))%>% 
+#  mutate(summerkill = ifelse(cause.category.4 == 'summerkill', 1, 0))
 
 # Dunnett's test to compare the means of various kill categories against the mean of non-kill lakes
 
-DunnettTest(mean_surf ~ factor(cause.category.4), data = fig1ab.data, control = 'Summer Non-event')
+# Create summerkills datafram
+summerkills <- df.historical %>%
+  filter(month %in% c('6', '7', '8', '9')) %>%
+  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 0, 1)) %>%
+  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "anthropogenic",
+                                        ifelse(infectious == 1, "infectious",
+                                               ifelse(summerkill == 1, "infectious",
+                                                      ifelse(winterkill == 1, "winterkill",
+                                                             ifelse(unknown == 1, "unknown", "none")))))) %>%
+  dplyr::mutate(fishkill       = as.factor(fishkill),
+                fishkill_cause = as.factor(fishkill_cause))
+
+# Linear model for summerkills
+summerkill.lm <- lm(mean_surf_z ~ summerkill, data = summerkills)
+summary(summerkill.lm)
+
+# Linear model for all fishkills in summer
+fishkill.lm <- lm(mean_surf_z ~ fishkill_cause, data = summerkills)
+summary(fishkill.lm)
+
+# Extract residuals from model
+fishkill.lm.resid <- residuals(fishkill.lm)
+fishkill.lm.fits  <- fitted(fishkill.lm)
+# Bind residuals and fits with ass.data
+fishkill.resids      <- cbind(summerkills, fishkill.lm.resid)
+fishkill.resids.fits <- cbind(fishkill.resids, fishkill.lm.fits)
+# Plot residuals vs. fits (not too bad)
+plot(fishkill.lm.resid ~ fishkill.lm.fits)
+
+### Normality checks
+# Histogram of residuals
+fishkill.hist <- hist(fishkill.resids.fits$fishkill.lm.resid)
+fishkill.hist
+# Normal histogram of residuals
+fishkill.norm.hist <- plotNormalHistogram(fishkill.resids.fits$fishkill.lm.resid)
+fishkill.norm.hist
+# Quantile-quantile (Q-Q) plot
+fishkill.qqplot <- qqPlot(fishkill.resids.fits$fishkill.lm.resid, ylab = "fishkill.resid")
+fishkill.qqplot
+# Shapiro-Wilk test
+fishkill.shapiro <- shapiro.test(fishkill.resids.fits$fishkill.lm.resid)
+fishkill.shapiro
+
+## Homogeneity of variances
+# Treatment level
+plot(fishkill.resids.fits$fishkill.lm.resid ~ fishkill.resids.fits$Treatment)
+leveneTest(fishkill.resids.fits$fishkill.lm.resid ~ fishkill.resids.fits$Treatment)
+# Lake level
+plot(fishkill.resids.fits$fishkill.lm.resid~ fishkill.resids.fits$Lake)
+leveneTest(fishkill.resids.fits$fishkill.lm.resid ~ fishkill.resids.fits$Lake)
+# Monte Carlo (MC) procedure for treatment
+lsmeans(fishkill.lm, pairwise ~ Treatment, adjust = "tukey")
+# Monte Carlo (MC) procedure for lake (similar to ANOVA results)
+lsmeans(fishkill.lm, pairwise ~ Lake, adjust = "tukey")
+# Tukey HSD
+fishkill.aov <- aov(fishkill.lm)
+TukeyHSD(x = fishkill.aov)
+
+
+
+
+
+model <- aov(mean_surf_z ~ fishkill_cause, data = summerkills)
+
+
+DunnettTest(mean_surf_z ~ fishkill, data = summerkills, control = summerkills$fishkill)
+
+
+model <- aov(score ~ technique, data = data)
+
 
 # Normal distribution plot of mean surface temperature for non-kill events
 control.data <- fig1ab.data %>% 
