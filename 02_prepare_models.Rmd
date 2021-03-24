@@ -7,7 +7,6 @@ output: github_document
 
 ### Step 1: Load packages and data
 
-
 ```{r: Load packages and data}
 # Load packages
 library(tidyverse)
@@ -22,6 +21,7 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/p
 
 # Load historical data
 df.historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
+df.future     <- read.csv(file = "df_future.csv", head = TRUE, sep = ",")
 ```
 
 ### Step 2: Partition and scale data
@@ -40,48 +40,56 @@ df.historical <- df.historical %>%
          long         = as.numeric(long),
          population   = as.numeric(population),
          state        = as.factor(state),
-         l3_code      = as.factor(l3_code),
          mean_bot_z   = as.numeric(mean_bot_z),
          mean_surf_z  = as.numeric(mean_surf_z),
          water_pca    = as.numeric(water_pca),
          mean_air_z   = as.numeric(mean_air_z),
          air_pca      = as.numeric(air_pca)) %>%
     dplyr::select(., c("year", "month", "season",
-                     "summerkill", "lat", "long",
-                     "population", "state", "l3_code",
-                     "max_surf", "mean_surf", "max_bot", "mean_bot",
-                     "max_surf_z", "mean_surf_z", "max_bot_z", "mean_bot_z",
-                     "max_air", "mean_air", "min_air",
-                     "max_air_z", "mean_air_z", "min_air_z",
-                     "air_pca", "water_pca",
-                     "variance_after_ice_30", "variance_after_ice_60",
-                     "log_schmidt", "ice_duration", "layer_diff",
-                     "air_quad_temp", "water_quad_temp", "peak_temp",
-                     "cumulative_above_0", "cumulative_above_5", "cumulative_above_10",
-                     "cold_temp", "cool_temp", "warm_temp", "site_id")) %>%
+                       "summerkill", "lat", "long",
+                       "population", "state",
+                       "max_surf", "mean_surf", "max_bot", "mean_bot",
+                       "max_surf_z", "mean_surf_z", "max_bot_z", "mean_bot_z",
+                       "max_air", "mean_air", "min_air",
+                       "max_air_z", "mean_air_z", "min_air_z",
+                       "air_pca", "water_pca",
+                       "variance_after_ice_30", "variance_after_ice_60",
+                       "log_schmidt", "ice_duration", "layer_diff",
+                       "air_quad_temp", "water_quad_temp", "peak_temp",
+                       "cumulative_above_0", "cumulative_above_5", "cumulative_above_10",
+                       "site_id")) %>%
     mutate(summerkill = fct_recode(summerkill,
                                  "neg" = "0",
                                  "pos" = "1"))
 
-# Format data for cold- and cool-water fish (Table 2, Lyons et al., 2009)
-df.cold <- df.historical %>%
-  mutate(summerkill = ifelse(summerkill == "pos" && cold_temp == "1" | cool_temp == "1", "pos", "neg"),
-         cold_temp  = NULL,
-         cool_temp  = NULL,
-         warm_temp  = NULL)
-
-# Format data for warm-water fish (Table 2, Lyons et al., 2009)
-df.warm <- df.historical %>%
-  mutate(summerkill = ifelse(summerkill == "pos" && warm_temp == "1", "pos", "neg"),
-         cold_temp  = NULL,
-         cool_temp  = NULL,
-         warm_temp  = NULL)
-
-# Reformat full historical dataset
-df.historical <- df.historical %>%
-  mutate(cold_temp  = NULL,
-         cool_temp  = NULL,
-         warm_temp  = NULL)
+# Check formatting of historical dataset
+test <- df.future %>%
+  mutate(site_id      = as.factor(site_id),
+         year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         population   = as.numeric(population),
+         state        = as.factor(state),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         water_pca    = as.numeric(water_pca),
+         mean_air_z   = as.numeric(mean_air_z),
+         air_pca      = as.numeric(air_pca)) %>%
+    dplyr::select(., c("year", "month", "season",
+                       "lat", "long",
+                       "population", "state",
+                       "max_surf", "mean_surf", "max_bot", "mean_bot",
+                       "max_surf_z", "mean_surf_z", "max_bot_z", "mean_bot_z",
+                       "max_air", "mean_air", "min_air",
+                       "max_air_z", "mean_air_z", "min_air_z",
+                       "air_pca", "water_pca",
+                       "variance_after_ice_30", "variance_after_ice_60",
+                       "log_schmidt", "ice_duration", "layer_diff",
+                       "air_quad_temp", "water_quad_temp", "peak_temp",
+                       "cumulative_above_0", "cumulative_above_5", "cumulative_above_10",
+                       "site_id"))
 ```
 
 ```{r: Create training and testing sets}
@@ -89,37 +97,21 @@ df.historical <- df.historical %>%
 set.seed(406)
 
 # Creates series of training partitions
-in.training      <- createDataPartition(df.historical$summerkill, p = .75, list = FALSE)
-in.training.cold <- createDataPartition(df.cold$summerkill,       p = .75, list = FALSE)
-in.training.warm <- createDataPartition(df.warm$summerkill,       p = .75, list = FALSE)
+in.training <- createDataPartition(df.historical$summerkill, p = .75, list = FALSE)
 
 # Partition training data
 training <- df.historical  %>%
   slice(in.training)
-training.cold <- df.cold  %>%
-  slice(in.training.cold)
-training.warm <- df.warm  %>%
-  slice(in.training.warm)
 
 # Partition testing data
 testing <- df.historical %>%
   slice(-in.training)
-testing.cold <- df.cold %>%
-  slice(-in.training.cold)
-testing.warm <- df.warm %>%
-  slice(-in.training.warm)
 
 # Scale data
-pre.proc.values      <- preProcess(training,      method = c("center", "scale"))
-pre.proc.values.cold <- preProcess(training.cold, method = c("center", "scale"))
-pre.proc.values.warm <- preProcess(training.warm, method = c("center", "scale"))
+pre.proc.values <- preProcess(training, method = c("center", "scale"))
 
 # Create training set
 training <- predict(pre.proc.values, training) %>%
-  mutate(year = as.integer(year))
-training.cold <- predict(pre.proc.values.cold, training.cold) %>%
-  mutate(year = as.integer(year))
-training.warm <- predict(pre.proc.values.warm, training.warm) %>%
   mutate(year = as.integer(year))
 
 # Create testing set
@@ -128,36 +120,27 @@ testing <- predict(pre.proc.values, testing) %>%
                              levels = c("pos", "neg"), 
                              ordered = TRUE),
          year = as.integer(year))
-testing.cold <- predict(pre.proc.values.cold, testing.cold) %>%
-  mutate(summerkill = factor(testing$summerkill, 
-                             levels = c("pos", "neg"), 
-                             ordered = TRUE),
-         year = as.integer(year))
-testing.warm <- predict(pre.proc.values.warm, testing.warm) %>%
-  mutate(summerkill = factor(testing.warm$summerkill, 
-                             levels = c("pos", "neg"), 
-                             ordered = TRUE),
-         year = as.integer(year))
+
+# Scale full dataset
+pre.proc.values.full.hist <- preProcess(df.historical, method = c("center", "scale"))
+
+# Predict future
+future <- predict(pre.proc.values.full.hist, test) %>%
+  mutate(year = as.integer(year))
 
 # Change working directory
 setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
 
-# Export training data
-write_csv(training,      "training.csv")
-write_csv(training.cold, "training_cold.csv")
-write_csv(training.warm, "training_warm.csv")
-
-# Export testing data
-write_csv(testing,      "testing.csv")
-write_csv(testing.cold, "testing_cold.csv")
-write_csv(testing.warm, "testing_warm.csv")
+# Export datasest
+write_csv(training, "training.csv")
+write_csv(testing,  "testing.csv")
+write_csv(future,   "future.csv")
 
 # Remove dataframes
-rm(df.historical,
-   in.training, in.training.cold, in.training.warm,
-   testing, testing.cold, testing.warm,
-   training, training.cold, training.warm,
-   pre.proc.values, pre.proc.values.cold, pre.proc.values.warm)
+rm(df.historical, future,
+   in.training,
+   testing, training,
+   pre.proc.values)
 ```
 
 ######################################

@@ -31,13 +31,12 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/m
 
 # Load data
 training      <- read.csv(file = "training.csv", head = TRUE, sep = ",")
-#training.cold <- read.csv(file = "training_cold.csv", head = TRUE, sep = ",")
-#training.warm <- read.csv(file = "training_warm.csv", head = TRUE, sep = ",")
 testing       <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
-#testing.cold  <- read.csv(file = "testing_cold.csv",  head = TRUE, sep = ",")
-#testing.warm  <- read.csv(file = "testing_warm.csv",  head = TRUE, sep = ",")
+```
 
+### Step 2: Verify formatting
 
+```{r: Verify formatting}
 # Reformat training data
 training <- training %>%
   mutate(year         = as.character(year),
@@ -48,43 +47,12 @@ training <- training %>%
          long         = as.numeric(long),
          population   = as.numeric(population),
          state        = as.factor(state),
+         l1_code      = as.factor(l1_code),
+         mean_bot_z   = as.numeric(mean_bot_z),
          mean_surf_z  = as.numeric(mean_surf_z),
          water_pca    = as.numeric(water_pca),
          mean_air_z   = as.numeric(mean_air_z),
-         air_pca      = as.numeric(air_pca),
-         site_id      = NULL)
-
-## Reformat training data for cold-fish
-#training.cold <- training.cold %>%
-#  mutate(year         = as.character(year),
-#         month        = as.character(month),
-#         season       = as.factor(season),
-#         summerkill   = as.factor(summerkill),
-#         lat          = as.numeric(lat),
-#         long         = as.numeric(long),
-#         population   = as.numeric(population),
-#         state        = as.factor(state),
-#         mean_bot_z   = as.numeric(mean_bot_z),
-#         mean_surf_z  = as.numeric(mean_surf_z),
-#         water_pca    = as.numeric(water_pca),
-#         mean_air_z   = as.numeric(mean_air_z),
-#         air_pca      = as.numeric(air_pca))
-#
-## Reformat training data for warm-fish
-#training.warm <- training.warm %>%
-#  mutate(year         = as.character(year),
-#         month        = as.character(month),
-#         season       = as.factor(season),
-#         summerkill   = as.factor(summerkill),
-#         lat          = as.numeric(lat),
-#         long         = as.numeric(long),
-#         population   = as.numeric(population),
-#         state        = as.factor(state),
-#         mean_bot_z   = as.numeric(mean_bot_z),
-#         mean_surf_z  = as.numeric(mean_surf_z),
-#         water_pca    = as.numeric(water_pca),
-#         mean_air_z   = as.numeric(mean_air_z),
-#         air_pca      = as.numeric(air_pca))
+         air_pca      = as.numeric(air_pca))
 
 # Reformat testing data
 testing <- testing %>%
@@ -96,43 +64,12 @@ testing <- testing %>%
          long         = as.numeric(long),
          population   = as.numeric(population),
          state        = as.factor(state),
+         l1_code      = as.factor(l1_code),
+         mean_bot_z   = as.numeric(mean_bot_z),
          mean_surf_z  = as.numeric(mean_surf_z),
          water_pca    = as.numeric(water_pca),
          mean_air_z   = as.numeric(mean_air_z),
-         air_pca      = as.numeric(air_pca),
-         site_id      = NULL)
-
-## Reformat testing data for cold-water fish
-#testing.cold <- testing.cold %>%
-#  mutate(year         = as.character(year),
-#         month        = as.character(month),
-#         season       = as.factor(season),
-#         summerkill   = as.factor(summerkill),
-#         lat          = as.numeric(lat),
-#         long         = as.numeric(long),
-#         population   = as.numeric(population),
-#         state        = as.factor(state),
-#         mean_surf_z  = as.numeric(mean_surf_z),
-#         mean_bot_z   = as.numeric(mean_bot_z),
-#         water_pca    = as.numeric(water_pca),
-#         mean_air_z   = as.numeric(mean_air_z),
-#         air_pca      = as.numeric(air_pca))
-#
-## Reformat testing data for warm-water fish
-#testing.warm <- testing.warm %>%
-#  mutate(year         = as.character(year),
-#         month        = as.character(month),
-#         season       = as.factor(season),
-#         summerkill   = as.factor(summerkill),
-#         lat          = as.numeric(lat),
-#         long         = as.numeric(long),
-#         population   = as.numeric(population),
-#         state        = as.factor(state),
-#         mean_surf_z  = as.numeric(mean_surf_z),
-#         mean_bot_z   = as.numeric(mean_bot_z),
-#         water_pca    = as.numeric(water_pca),
-#         mean_air_z   = as.numeric(mean_air_z),
-#         air_pca      = as.numeric(air_pca))
+         air_pca      = as.numeric(air_pca))
 ```
 
 ### Step 2: Load models
@@ -144,25 +81,13 @@ setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/m
 # Save file names
 model_names <- list.files()
 
-### Method 1 (Original)
 # Load models
 all_models <- model_names %>%
   map(., ~read_rds(.))
 
-#### Method 2
-#all_models <- list.files(pattern = ".rds$") %>%
-#  map(readRDS) %>% 
-#  bind_rows()
-
-#### Method 3 (working, I think)
-#model_names = list.files(path = '.', pattern = '*.rds$')
-#all_models = lapply(model_names, function (x) data.table(readRDS(x)))
-##all_models = ldply(dat_list, data.frame)
-
 # Extract model names and object types
 all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."),
                                     1, -2), model = all_models)
-
 ```
 
 ### Step 3: Extract fitted values
@@ -170,7 +95,7 @@ all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."),
 Extract fitted values and append as new column.
 
 ```{r: Extract fitted values}
-# Function to compare testing and fitted values
+# Function to compare fitted values on testing data
 predict_route <- function(model, newdata) {
   if("train" %in% class(model)) {
     predict(model, newdata, type = "prob")$pos
@@ -190,8 +115,9 @@ all_models <- all_models %>%
 #ℹ Input `fit_test` is `map(model, predict_route, newdata = testing)`.
 
 # Calculate logloss and auc
-auc <- rep(NA, nrow(all_models))
+auc     <- rep(NA, nrow(all_models))
 logloss <- auc
+
 for (i in 1:nrow(all_models)) {
   a <- tibble(fit_test = all_models$fit_test[[i]],
               truth    = testing$summerkill)
@@ -200,9 +126,13 @@ for (i in 1:nrow(all_models)) {
 }
 
 # Add logloss and auc
-all_models %>%
-  add_column(auc, logloss) %>%
+all_model_tests <- all_models %>%
+  add_column(auc) %>%
+  add_column(logloss) %>%
   arrange(logloss, desc(auc))
+
+# Print logloss and auc in increasing order
+print(tibble::as.tibble(all_model_tests), n = 24)
 ```
 
 ### Step 4: Extract coefficients

@@ -1,7 +1,7 @@
 ---
-title: "fit_full_models"
+title: "fit full models"
 author: "fishkill friends"
-date: "2020/11/10"
+date: "2021_03_04"
 output: github_document
 ---
 
@@ -29,25 +29,47 @@ library(lme4)
 rm(list = ls())
 
 # Set working directory
-setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/processed")
+setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data")
 
 # Load historical data
-df_historical <- df_historical %>%
-  mutate(site_id      = as.character(site_id),
+df.historical <- read.csv(file = "processed/df_historical.csv", head = TRUE, sep = ",")
+
+# Format historical dataset
+df.historical <- df.historical %>%
+  mutate(site_id      = as.factor(site_id),
          year         = as.character(year),
          month        = as.character(month),
-         season       = as.character(season),
-         summerkill   = as.character(summerkill),
-         ice_duration = as.double(ice_duration)) %>%
-  dplyr::select(., -c("anthropogenic", "infectious", "unknown", "winterkill",
-                      "event", "gnis_nm")) %>%
-  mutate(summerkill = fct_recode(summerkill,
+         season       = as.factor(season),
+         summerkill   = as.factor(summerkill),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         population   = as.numeric(population),
+         state        = as.factor(state),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         water_pca    = as.numeric(water_pca),
+         mean_air_z   = as.numeric(mean_air_z),
+         air_pca      = as.numeric(air_pca)) %>%
+    dplyr::select(., c("year", "month", "season",
+                       "summerkill", "lat", "long",
+                       "population", "state", "l1_code",
+                       "max_surf", "mean_surf", "max_bot", "mean_bot",
+                       "max_surf_z", "mean_surf_z", "max_bot_z", "mean_bot_z",
+                       "max_air", "mean_air", "min_air",
+                       "max_air_z", "mean_air_z", "min_air_z",
+                       "air_pca", "water_pca",
+                       "variance_after_ice_30", "variance_after_ice_60",
+                       "log_schmidt", "ice_duration", "layer_diff",
+                       "air_quad_temp", "water_quad_temp", "peak_temp",
+                       "cumulative_above_0", "cumulative_above_5", "cumulative_above_10",
+                       "site_id")) %>%
+    mutate(summerkill = fct_recode(summerkill,
                                  "neg" = "0",
                                  "pos" = "1"))
 
 # Scale data
-pre_proc_values <- preProcess(df_historical, method = c("center", "scale"))
-df_historical   <- predict(pre_proc_values, df_historical)
+pre.proc.values <- preProcess(df.historical, method = c("center", "scale"))
+df.historical   <- predict(pre.proc.values, df.historical)
 ```
 
 ### Step 2: Fit full models
@@ -55,12 +77,23 @@ df_historical   <- predict(pre_proc_values, df_historical)
 Specify predictor set and control parameters.
 
 ```{r: Fit full models}
-# Black magic
-f1 <- summerkill ~ variance_after_ice_30 + variance_after_ice_60 + log_schmidt +
-  cumulative_above_10 + ice_duration + population + lon + lat + season + temp
+# Simple air model
+a1 <- summerkill ~ lat + long + season + population + state +
+  mean_air_z + air_pca
 
-# Black magic
-control_logloss_ds <- trainControl(method = "repeatedcv",
+# Simple water model
+w1 <- summerkill ~ lat + long + season + population + state +
+  mean_surf_z + water_pca
+
+## No downsampling
+#control.logloss <- trainControl(method = "repeatedcv",
+#                                number = 5,
+#                                repeats = 5,
+#                                summaryFunction = mnLogLoss,
+#                                classProbs = TRUE)
+
+# Downsampling
+control.logloss.ds <- trainControl(method = "repeatedcv",
                                    number = 5,
                                    repeats = 5,
                                    summaryFunction = mnLogLoss,
@@ -68,77 +101,94 @@ control_logloss_ds <- trainControl(method = "repeatedcv",
                                    sampling = "down")
 ```
 
-### Step 3: Logistic model
+### Step 3: Logistic models
 
 ```{r: Logistic model}
-# Black magic
-full_logistic_f1_backwards <- glm(f1,
-                         historical_data,
-                         family = "binomial") 
-# Black magic
-full_logistic_f1_backwards <- step(full_logistic_f1_backwards)
-
-# Save model
-write_rds(full_logistic_f1_backwards, "../models/full_logistic_f1.rds")
+## Black magic
+#full_logistic_f1_backwards <- glm(f1,
+#                         historical_data,
+#                         family = "binomial") 
+## Black magic
+#full_logistic_f1_backwards <- step(full_logistic_f1_backwards)
+#
+## Save model
+#write_rds(full_logistic_f1_backwards, "../models/full_logistic_f1.rds")
 ```
 
-### Step 4: Lasso model
+### Step 4: Lasso models
 
 ```{r: Lasso model}
-# Black magic
-cl <- makePSOCKcluster(4)
-registerDoParallel(cl)
+# For remote computing
+#cl <- makePSOCKcluster(4)
+#registerDoParallel(cl)
 
-# Black magic
-par_grid <-  expand.grid(alpha = 1,
-                         lambda = 10^seq(-3, -1, length = 10))
+# Create grid of parameters
+par_grid <-  expand.grid(alpha = 1, lambda = 10^seq(-3, -1, length = 10))
 
 # Set seed
 set.seed(825)
 
-# Black magic
-full_lasso_f1_logloss_downsampled <- train(f1, 
-                                            data = historical_data, 
-                                            method = "glmnet", 
-                                            metric = "logLoss",
-                                            tuneGrid = par_grid,
-                                            trControl = control_logloss_ds)
+# Simple air model
+full_lasso_a1_logloss_ds <- train(a1, 
+                                  data      = df.historical, 
+                                  method    = "glmnet", 
+                                  metric    = "logLoss",
+                                  tuneGrid  = par_grid,
+                                  trControl = control.logloss.ds)
+# Simple water model
+full_lasso_w1_logloss_ds <- train(w1, 
+                                  data      = df.historical, 
+                                  method    = "glmnet", 
+                                  metric    = "logLoss",
+                                  tuneGrid  = par_grid,
+                                  trControl = control.logloss.ds)
+# For remote computing
+#stopCluster(cl)
 
-# Black magic
-stopCluster(cl)
-
-# Save model
-write_rds(full_lasso_f1_logloss_downsampled, "../models/full_lasso_f1_logloss_downsampled.rds")
+# Save models
+write_rds(full_lasso_a1_logloss_ds, "models/full/full_lasso_a1_logloss_ds.rds")
+write_rds(full_lasso_w1_logloss_ds, "models/full/full_lasso_w1_logloss_ds.rds")
 ```
 
-### Step 5: Ridge model
+### Step 5: Ridge models
 
 ```{r: Ridge model}
-# Black magic
-par_grid <-  expand.grid(alpha = 0,
-                         lambda = 10^seq(-1.7, -1.3, length = 10))
-# Black magic
-cl <- makePSOCKcluster(4)
-registerDoParallel(cl)
+# For remote computing
+#cl <- makePSOCKcluster(4)
+#registerDoParallel(cl)
+
+# Create grid of parameters
+par_grid <- expand.grid(alpha = 0, lambda = 10^seq(-1.7, -1.3, length = 10))
 
 # Set seed
-set.seed(825)
+set.seed(538)
 
-# Black magic
-full_ridge_f1_logloss_downsampled <- train(f1, 
-                                            data = historical_data, 
-                                            method = "glmnet",
-                                            metric = "logLoss",
-                                            tuneGrid = par_grid,
-                                            trControl = control_logloss_ds)
+# Simple air model
+full_ridge_a1_logloss_ds <- train(a1, 
+                                  data      = df.historical, 
+                                  method    = "glmnet",
+                                  metric    = "logLoss",
+                                  tuneGrid  = par_grid,
+                                  trControl = control.logloss.ds)
 
-# Black magic
-stopCluster(cl)
+# Simple water model
+full_ridge_w1_logloss_ds <- train(w1, 
+                                  data      = df.historical, 
+                                  method    = "glmnet",
+                                  metric    = "logLoss",
+                                  tuneGrid  = par_grid,
+                                  trControl = control.logloss.ds)
+
+# For remote computing
+#stopCluster(cl)
 
 # Save model
-write_rds(full_ridge_f1_logloss_downsampled, "../models/full_ridge_f1_logloss_downsampled.rds")
+write_rds(full_ridge_a1_logloss_ds, "models/full/full_ridge_a1_logloss_ds.rds")
+write_rds(full_ridge_w1_logloss_ds, "models/full/full_ridge_w1_logloss_ds.rds")
 ```
 
 ######################################
 Proceed to `06_statistics.Rmd`
 ######################################
+
+lasso_w1_logloss_ds

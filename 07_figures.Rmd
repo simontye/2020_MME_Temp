@@ -116,3 +116,417 @@ ggplot() +
   guides(colour = guide_legend(override.aes = list(size = 1.5))) +
   pretty
 ```
+
+
+### Step 2: Map of fishkills
+
+This creates a preliminary map of fishkill events across Minnesota and Wisconsin to visually verify the waterbody centroid method used above. Specifically, it creates one map with the fishkill event localities and another map with the fishkill event and waterbody localities across both states.
+
+```{r: Maps of fishkills}
+# Subsets fishkills for map
+fishkills <- df.historical %>%
+  filter(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  mutate(fishkill = ifelse(anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1, 1, 0)) %>%
+  subset(., select = c(lat, long, state))
+
+# Subsets lakes for map
+lakes <- df.historical %>%
+  subset(., select = c(site_id, lat, long, state))
+
+# Creates state boundaries
+states   <- map_data("state")
+states   <- subset(states, region %in% c("minnesota", "wisconsin"))
+
+# Creates county boundaries
+counties <- map_data("county")
+counties <- subset(counties, region %in% c("minnesota", "wisconsin"))
+
+# Map of fishkill events
+ggplot(data = states, mapping = aes(x = long, y = lat, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(data = counties, aes(x = long, y = lat, alpha = 0.1, group = group),
+               color = "darkgray", fill = "gray", size = 0.5) +
+  geom_polygon(data = states, color = "black", fill = NA, size = 1) +
+  geom_point(data = lakes, aes(x = long, y = lat, group = state),
+             color = "black", fill = "lightblue", size = 1, shape = 21) +
+  #stat_density2d(data = fishkills, aes(x = long, y = lat, fill = ..level.., alpha = ..level.., group = state),
+  #               bins = 30, geom = "polygon") +
+  geom_point(data = fishkills, aes(x = long, y = lat, group = state),
+             color = "black", fill = "red", size = 2, shape = 21) +
+  theme_nothing()
+
+# For animated maps, avoid this rabbit hole.
+#map.animated <- map + transition_states(Year, transition_length = 2, state_length = 2)
+#map.animated
+
+# Map of fishkill events and lake localities across upper midwest
+ggplot(data = states, mapping = aes(x = long, y = lat)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(data = counties, aes(x = long, y = lat, alpha = 0.1), color = "darkgray", fill = "gray", size = 0.5) +
+  geom_polygon(data = states, color = "black", fill = NA, size = 1) +
+  geom_point(data = lakes, aes(x = long, y = lat),
+             color = "black", fill = "lightblue", size = 1, shape = 21) +
+  geom_point(data = fishkills, aes(x = long, y = lat, group = state),
+             color = "black", fill = "red", size = 1, shape = 21) +
+  theme_nothing()
+
+# Remove unnecessary dataframes
+rm(counties, states, fish.map)
+```
+
+### Step 3: Fishkill counts
+
+```{r: Fishkill counts}
+# Fishkills by state
+fishkills.state <- df.historical %>%
+  group_by(state) %>%
+  dplyr::summarize(anthropogenic = sum(anthropogenic),
+                   infectious    = sum(infectious),
+                   summerkill    = sum(summerkill),
+                   winterkill    = sum(winterkill),
+                   unknown       = sum(unknown),
+                   fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)))
+# Fishkills by ecoregion
+fishkills.ecoregion <- df.historical %>%
+  group_by(l3_code) %>%
+  dplyr::summarize(anthropogenic = sum(anthropogenic),
+                   infectious    = sum(infectious),
+                   summerkill    = sum(summerkill),
+                   winterkill    = sum(winterkill),
+                   unknown       = sum(unknown),
+                   fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)))
+
+# Fishkills by lake
+fishkills.lake <- df.historical %>%
+  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  group_by(site_id) %>%
+  summarize(anthropogenic = sum(anthropogenic),
+            infectious    = sum(infectious),
+            summerkill    = sum(summerkill),
+            winterkill    = sum(winterkill),
+            unknown       = sum(unknown),
+            fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)))
+
+# Fishkills by thermal category and state
+fishkills.thermal <- df.historical %>%
+  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  reshape2::melt(., id.vars = c("state"),
+                 measure.vars = c("cool_temp", "cold_temp", "warm_temp")) %>%
+  group_by(state, variable) %>%
+  summarize(value = sum(value))
+
+# Fishkills by thermal category, state, and cause
+fishkills.thermal <- df.historical %>%
+  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  reshape2::melt(., id.vars = c("state", "anthropogenic", "infectious", "summerkill", "winterkill", "unknown"),
+                 measure.vars = c("cool_temp", "cold_temp", "warm_temp")) %>%
+  group_by(state, variable, anthropogenic, infectious, summerkill, winterkill, unknown) %>%
+  summarize(value = sum(value)) %>%
+  mutate(anthropogenic = ifelse(anthropogenic >= 1, value, 0),
+         infectious    = ifelse(infectious >= 1,    value, 0),
+         summerkill    = ifelse(summerkill >= 1,    value, 0),
+         winterkill    = ifelse(winterkill >= 1,    value, 0),
+         unknown       = ifelse(unknown >= 1,       value, 0),
+         value         = NULL) %>%
+  dplyr::rename(thermal.category = variable) %>%
+  reshape2::melt(., id.vars = c("state", "thermal.category"),
+                 measure.vars = c("anthropogenic", "infectious", "summerkill",
+                                  "winterkill", "unknown")) %>%
+  dplyr::rename(cause = variable,
+                count = value) %>%
+  group_by(state, thermal.category, cause) %>%
+  summarize(count = sum(count))
+
+# Fishkills by family and cause
+fishkills.family <- df.historical %>%
+  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  reshape2::melt(., id.vars = c("state", "anthropogenic", "infectious", "summerkill", "winterkill", "unknown"),
+                 measure.vars = c("centrarchidae", "percidae", "esocidae", "ictaluridae",
+                                  "cyprinidae", "salmonidae", "catostomidae", "sciaenidae",
+                                  "osmeridae", "lepisosteidae", "acipenseridae", "amiidae",
+                                  "cottoidae", "gasterosteidae", "gobiidae")) %>%
+  group_by(state, variable, anthropogenic, infectious, summerkill, winterkill, unknown) %>%
+  summarize(value = sum(value)) %>%
+  mutate(anthropogenic = ifelse(anthropogenic >= 1, value, 0),
+         infectious    = ifelse(infectious >= 1,    value, 0),
+         summerkill    = ifelse(summerkill >= 1,    value, 0),
+         winterkill    = ifelse(winterkill >= 1,    value, 0),
+         unknown       = ifelse(unknown >= 1,       value, 0),
+         value         = NULL) %>%
+  dplyr::rename(family = variable) %>%
+  reshape2::melt(., id.vars = c("family"),
+                 measure.vars = c("anthropogenic", "infectious", "summerkill",
+                                  "winterkill", "unknown")) %>%
+  dplyr::rename(cause = variable,
+                count = value) %>%
+  group_by(family, cause) %>%
+  summarize(count = sum(count)) %>%
+  mutate(family = as.character(family),
+         cause = as.character(cause)) %>%
+  .[with(., order(family, cause)), ]
+
+# Percent of fishkills by family and summer
+fishkills.family <- df.historical %>%
+  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  reshape2::melt(., id.vars = c("state", "anthropogenic", "infectious", "summerkill", "winterkill", "unknown"),
+                 measure.vars = c("centrarchidae", "percidae", "esocidae", "ictaluridae",
+                                  "cyprinidae", "salmonidae", "catostomidae", "sciaenidae",
+                                  "osmeridae", "lepisosteidae", "acipenseridae", "amiidae",
+                                  "cottoidae", "gasterosteidae", "gobiidae")) %>%
+  group_by(state, variable, anthropogenic, infectious, summerkill, winterkill, unknown) %>%
+  summarize(value = sum(value)) %>%
+  mutate(anthropogenic = ifelse(anthropogenic >= 1, value, 0),
+         infectious    = ifelse(infectious >= 1,    value, 0),
+         summerkill    = ifelse(summerkill >= 1,    value, 0),
+         winterkill    = ifelse(winterkill >= 1,    value, 0),
+         unknown       = ifelse(unknown >= 1,       value, 0),
+         value         = NULL) %>%
+  dplyr::rename(family = variable) %>%
+  reshape2::melt(., id.vars = c("family"),
+                 measure.vars = c("anthropogenic", "infectious", "summerkill",
+                                  "winterkill", "unknown")) %>%
+  dplyr::rename(cause = variable,
+                count = value) %>%
+  group_by(family, cause) %>%
+  summarize(count = sum(count)) %>%
+  mutate(family = as.character(family),
+         cause = as.character(cause)) %>%
+  .[with(., order(family, cause)), ]
+```
+
+### Step 4: Boxplots of major causes ~ thermal z-scores
+
+```{r: Summerkills}
+# Create summerkill dataframe
+summerkills <- df.historical %>%
+  filter(month %in% c("6", "7", "8")) %>%
+  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
+  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+                                        ifelse(infectious == 1, "Infectious",
+                                               ifelse(summerkill == 1, "Summerkill",
+                                                      ifelse(winterkill == 1, "Winterkill",
+                                                             ifelse(unknown == 1, "Unknown", "Summer non-event")))))) %>%
+  dplyr::mutate(fishkill       = as.factor(fishkill),
+                fishkill_cause = as.factor(fishkill_cause)) %>%
+  subset(., fishkill_cause == "Summerkill" | fishkill_cause == "Summer non-event") %>%
+  dplyr::select(., c(fishkill_cause,
+                     mean_surf_z, mean_bot_z, mean_air_z,
+                     state, l3_code)) %>%
+  dplyr::rename("Surface water" = mean_surf_z,
+                "Bottom water"  = mean_bot_z,
+                "Air"           = mean_air_z) %>%
+  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+  reshape2::melt(., id.vars = c("fishkill_cause", "state", "l3_code"),
+                 measure.vars = c("Surface water", "Bottom water", "Air")) %>%
+  dplyr::rename(Temperature = variable,
+                `z-score`   = value)
+
+# Boxplot for summerkills ~ thermal z-scores
+ggplot() +
+  geom_boxplot(summerkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
+  pretty +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1"))
+
+# Boxplot for summerkills ~ thermal z-scores by state
+ggplot() +
+  geom_boxplot(summerkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
+  pretty +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
+  facet_wrap(~ state)
+
+# Boxplot for summerkills ~ thermal z-scores by ecoregion
+#ggplot() +
+#  geom_boxplot(summerkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
+#  pretty +
+#  labs(x = NULL) +
+#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
+#  facet_wrap(~ l3_code)
+```
+
+```{r: Winterkills}
+# Create winterkill dataframe
+winterkills <- df.historical %>%
+  filter(month %in% c("12", "1", "2")) %>%
+  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
+  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+                                        ifelse(infectious == 1, "Infectious",
+                                               ifelse(summerkill == 1, "Summerkill",
+                                                      ifelse(winterkill == 1, "Winterkill",
+                                                             ifelse(unknown == 1, "Unknown", "Winter non-event")))))) %>%
+  dplyr::mutate(fishkill       = as.factor(fishkill),
+                fishkill_cause = as.factor(fishkill_cause)) %>%
+  subset(., fishkill_cause == "Winterkill" | fishkill_cause == "Winter non-event") %>%
+  dplyr::select(., c(fishkill_cause,
+                     mean_surf_z, mean_bot_z, mean_air_z,
+                     state, l3_code)) %>%
+  dplyr::rename("Surface water" = mean_surf_z,
+                "Bottom water"  = mean_bot_z,
+                "Air"           = mean_air_z) %>%
+  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+  reshape2::melt(., id.vars = c("fishkill_cause", "state", "l3_code"),
+                 measure.vars = c("Surface water", "Bottom water", "Air")) %>%
+  dplyr::rename(Temperature = variable,
+                `z-score`   = value)
+
+# Boxplot for winterkills ~ thermal z-scores
+ggplot() +
+  geom_boxplot(winterkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
+  pretty +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1"))
+
+# Boxplot for winterkills ~ thermal z-scores by state
+ggplot() +
+  geom_boxplot(winterkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
+  pretty +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
+  facet_wrap(~ state)
+
+# Boxplot for winterkills ~ thermal z-scores by ecoregion
+#ggplot() +
+#  geom_boxplot(winterkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
+#  pretty +
+#  labs(x = NULL) +
+#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
+#  facet_wrap(~ l3_code)
+```
+
+```{r: Infectious}
+# Create infectious dataframe
+infectious <- df.historical %>%
+  filter(month %in% c("6", "7", "8")) %>%
+  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
+  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+                                        ifelse(infectious == 1, "Infectious",
+                                               ifelse(summerkill == 1, "Summerkill",
+                                                      ifelse(winterkill == 1, "Winterkill",
+                                                             ifelse(unknown == 1, "Unknown", "Infectious non-event")))))) %>%
+  dplyr::mutate(fishkill       = as.factor(fishkill),
+                fishkill_cause = as.factor(fishkill_cause)) %>%
+  subset(., fishkill_cause == "Infectious" | fishkill_cause == "Infectious non-event") %>%
+  dplyr::select(., c(fishkill_cause,
+                     mean_surf_z, mean_bot_z, mean_air_z,
+                     state, l3_code)) %>%
+  dplyr::rename("Surface water" = mean_surf_z,
+                "Bottom water"  = mean_bot_z,
+                "Air"           = mean_air_z) %>%
+  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+  reshape2::melt(., id.vars = c("fishkill_cause", "state", "l3_code"),
+                 measure.vars = c("Surface water", "Bottom water", "Air")) %>%
+  dplyr::rename(Temperature = variable,
+                `z-score`   = value)
+
+# Boxplot for infectious ~ thermal z-scores
+ggplot() +
+  geom_boxplot(infectious, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
+  pretty +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1"))
+
+# Boxplot for infectious ~ thermal z-scores by state
+ggplot() +
+  geom_boxplot(infectious, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
+  pretty +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
+  facet_wrap(~ state)
+
+# Boxplot for infectious ~ thermal z-scores by ecoregion
+#ggplot() +
+#  geom_boxplot(infectious, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
+#  pretty +
+#  labs(x = NULL) +
+#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
+#  facet_wrap(~ l3_code)
+```
+
+### Step 5: Boxplots of winterkills ~ ice duration
+
+```{r: Winterkills}
+# Create winterkill dataframe
+winterkills.ice <- df.historical %>%
+  filter(month %in% c("12", "1", "2")) %>%
+  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
+  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+                                        ifelse(infectious == 1, "Infectious",
+                                               ifelse(summerkill == 1, "Summerkill",
+                                                      ifelse(winterkill == 1, "Winterkill",
+                                                             ifelse(unknown == 1, "Unknown", "Winter non-event")))))) %>%
+  dplyr::mutate(fishkill       = as.factor(fishkill),
+                fishkill_cause = as.factor(fishkill_cause)) %>%
+  subset(., fishkill_cause == "Winterkill" | fishkill_cause == "Winter non-event") %>%
+  dplyr::select(., c(fishkill_cause,
+                     ice_duration,
+                     state, l3_code)) %>%
+  dplyr::rename("Ice duration" = ice_duration) %>%
+  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+  reshape2::melt(., id.vars = c("fishkill_cause", "state", "l3_code"),
+                 measure.vars = c("Ice duration")) %>%
+  dplyr::rename(#`Ice duration (days)` = variable,
+                `Ice duration (days)`   = value)
+
+# Boxplot for ice duration ~ thermal z-scores
+ggplot() +
+  geom_boxplot(winterkills.ice,
+               mapping = aes(x = fishkill_cause, y = `Ice duration (days)`, fill = variable), outlier.alpha = .3) +
+  pretty +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#bdc9e1")) +
+  theme(legend.position = "none")
+
+## Boxplot for ice duration ~ thermal z-scores by state
+#ggplot() +
+#  geom_boxplot(winterkills.ice,
+#               mapping = aes(x = fishkill_cause, y = `Ice duration (days)`, fill = variable), outlier.alpha = .3) +
+#  pretty +
+#  labs(x = NULL) +
+#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
+#  facet_wrap(~ state) +
+#  theme(legend.position = "none")
+
+# Boxplot for ice duration ~ thermal z-scores by ecoregion
+#ggplot() +
+#  geom_boxplot(winterkills.ice,
+#               mapping = aes(x = fishkill_cause, y = `Ice duration (days)`, fill = variable), outlier.alpha = .3) +
+#  pretty +
+#  labs(x = NULL) +
+#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
+#  facet_wrap(~ l3_code) +
+#  theme(legend.position = "none")
+```
+
+### Step 4: Barplots of major causes
+
+```{r: Causes}
+# Create causes dataframe
+causes.state <- df.historical %>%
+  dplyr::select(., c("state", "anthropogenic",
+                     "infectious", "summerkill",
+                     "winterkill", "unknown")) %>%
+  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+  group_by(state) %>%
+  summarize(fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)),
+            Anthropogenic = sum(anthropogenic) / fishkills,
+            Infectious    = sum(infectious) / fishkills,
+            Summerkill    = sum(summerkill) / fishkills,
+            Winterkill    = sum(winterkill) / fishkills,
+            Unknown       = sum(unknown) / fishkills) %>%
+  mutate(fishkills = NULL) %>%
+  reshape2::melt(., id.vars = c("state"),
+                 measure.vars = c("Anthropogenic", "Infectious",
+                                  "Summerkill", "Winterkill")) %>%
+  dplyr::rename(Cause   = variable,
+                Percent = value)
+
+# Barplot of causes by state
+ggplot() +
+  geom_bar(causes.state, mapping = aes(x = state, y = Percent, fill = Cause),
+           stat = "identity", position = "dodge") +
+  labs(y = "Percent of fishkils", x = NULL) +
+  pretty +
+  theme(axis.title.y = element_text(margin = margin(r = 20))) +
+  scale_fill_manual(values = c("#d7191c", "#fdae61", "#abd9e9", "#2c7bb6"))
+```
