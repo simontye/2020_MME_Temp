@@ -1,17 +1,19 @@
 ---
 title: "statistics"
-author: "fishkill friends"
-date: "2021_03_04"
+author: "SPT"
+date: "2021_08_16"
 output: github_document
 ---
 
-### Background
-
-Statistics
-
 ### Step 1: Load packages and data
 
-```{r: Load packages and data}
+```{r, setup, include = `FALSE`, echo = `FALSE`}
+knitr::opts_knit$set(root.dir = "/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp")
+```
+
+```{r, echo = `FALSE`}
+### Can't install RVAideMemoire on Big Sur; R 4.1
+
 # Load packages
 library(ggplot2)
 library(ggthemes)
@@ -22,28 +24,109 @@ library(car)
 library(DescTools)
 library(spdep)
 library(readr)
-library(dplyr)
 library(ggpubr)
 library(rstatix)
 library(reshape2)
 library(maddog)
+library(dplyr)
+library(fmsb)
+library(rstatix)
+library(caret)
+#library(RVAideMemoire)
 
 # Reset global environment
 rm(list = ls())
 
 # Change working directory
-setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp")
+setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp")
 
 # Load data
-df.historical <- read_csv("data/processed/df_historical.csv")
-df.future     <- read_csv("data/processed/df_future.csv")
-df.snow       <- read_csv("data/processed/df_snow.csv")
+df.historical <- read.csv(file = "data/processed/df_historical.csv", head = TRUE, sep = ",")
+df.test       <- read.csv(file = "data/processed/df_test.csv", head = TRUE, sep = ",")
+df.future     <- read.csv(file = "data/processed/df_future.csv", head = TRUE, sep = ",")
+df.snow       <- read.csv(file = "data/processed/df_snow.csv", head = TRUE, sep = ",")
+thermal       <- read.csv(file = "data/raw/fish_thermal.csv", head = TRUE, sep = ",")
+time.events   <- read.csv(file = "data/raw/time_events.csv", head = TRUE, sep = ",")
+
+# Load final models
+ridge_a1 <- readRDS("data/models/full/full_ridge_a1.rds")
+ridge_w1 <- readRDS("data/models/full/full_ridge_w1.rds")
+
+# Evaluate models
+eval_results <- function(true, predicted, df) {
+  # Calculate metrics
+  SSE      <- sum((predicted - true)^2)
+  SST      <- sum((true - mean(true))^2)
+  R_square <- 1 - SSE / SST
+  RMSE     <- sqrt(SSE/nrow(df))
+
+  # Save metrics
+  data.frame(
+    RMSE    = RMSE,
+    Rsquare = R_square)
+}
+```
+
+```{r, echo = `FALSE`}
+# No downsampling
+control.logloss <- trainControl(method          = "repeatedcv",
+                                number          = 5,
+                                repeats         = 5,
+                                summaryFunction = mnLogLoss,
+                                classProbs      = TRUE)
+
+# Downsampling
+control.logloss.ds <- trainControl(method          = "repeatedcv",
+                                   number          = 5,
+                                   repeats         = 5,
+                                   summaryFunction = mnLogLoss,
+                                   classProbs      = TRUE,
+                                   sampling        = "down")
 ```
 
 ### Step 2: Format data
 
-```{r: Format data}
-# Format historical data
+```{r, echo = `FALSE`}
+# Format historical dataset
+df.historical <- df.historical %>%
+  as.data.frame(.) %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         summerkill   = as.numeric(summerkill),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         state        = as.factor(state),
+         population   = as.numeric(population),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         mean_air_z   = as.numeric(mean_air_z),
+         ice_duration = as.numeric(ice_duration))
+
+# Format future dataset
+df.future <- df.future %>%
+  as.data.frame(.) %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         state        = as.factor(state),
+         population   = as.numeric(population),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         mean_air_z   = as.numeric(mean_air_z),
+         ice_duration = as.numeric(ice_duration))
+#%>%
+  #na.omit(.)
+
+# Format snow dataset
+df.snow <- df.snow %>%
+  as.data.frame(.) %>%
+  mutate(year  = as.character(year),
+         month = as.character(month))
+
+# Format all fishkill data
 fishkill.all <- df.historical %>%
   dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
   dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
@@ -55,7 +138,7 @@ fishkill.all <- df.historical %>%
                 fishkill_cause = as.factor(fishkill_cause))
 
 # Format summerkill data
-fishkill.s <- df.historical %>%
+fishkill.summerkill <- df.historical %>%
   filter(month %in% c("6", "7", "8")) %>% # include sept? till did
   dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
   dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
@@ -67,9 +150,8 @@ fishkill.s <- df.historical %>%
                 fishkill_cause = as.factor(fishkill_cause))
 
 # Format winterkill data
-# Winterkills
-fishkill.w <- df.historical %>%
-  filter(month %in% c("12", "1", "2")) %>% # include sept? till did
+fishkill.winterkill <- df.historical %>%
+  filter(month %in% c("12", "1", "2")) %>%
   dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
   dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
                                         ifelse(infectious == 1, "Infectious",
@@ -80,17 +162,17 @@ fishkill.w <- df.historical %>%
                 fishkill_cause = as.factor(fishkill_cause))
 
 # Format snow data
-df.snow$month <- as.numeric(df.snow$month)
-df.snow <- fishkill.w %>%   
+fishkill.snow <- fishkill.winterkill %>%   
   mutate(lat_round  = round(lat, 1),
          long_round = round(long, 1)) %>%
   inner_join(df.snow, by = c('year', 'month', 'lat_round', 'long_round')) %>%
   mutate(winterkill = ifelse(!is.na(fishkill_cause) & fishkill_cause == 'Winterkill', 1, 0))
 
 # Format ice duration data
-fishkill.i <- fishkill.all  %>%
-  group_by(year, site_id) %>%
-  summarise(ice_duration = mean(ice_duration), winterkill = max(winterkill))
+fishkill.ice <- fishkill.all  %>%
+  group_by(year, lat, long) %>%
+  dplyr::summarize(ice_duration = mean(ice_duration),
+                   winterkill   = max(winterkill))
 
 # Create figure theme
 pretty <- theme_classic(base_size = 12) +
@@ -103,210 +185,1044 @@ pretty <- theme_classic(base_size = 12) +
         legend.position   = "right")
 ```
 
-### Step 3: Summerkills (Dunnett's tests)
+### Step 3: Counts
 
-Dunnett's test to compare mean temperature estimates for fishkill events and non-events.
+```{r, echo = `FALSE`}
+# Events by state
+df.state <- df.historical %>%
+  group_by(state) %>%
+  dplyr::summarize(anthropogenic = sum(anthropogenic),
+                   infectious    = sum(infectious),
+                   summerkill    = sum(as.numeric(summerkill)),
+                   winterkill    = sum(winterkill),
+                   unknown       = sum(unknown),
+                   fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)))
 
-```{r: Dunnet's tests}
-# Water
-DunnettTest(mean_surf ~ factor(fishkill_cause), data = fishkill.s, control = 'Summer Non-event')
+# Fishkills by lake
+df.lake <- df.historical %>%
+  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  group_by(lat, long) %>%
+  dplyr::summarize(anthropogenic   = sum(anthropogenic),
+                   infectious      = sum(infectious),
+                   summerkill      = sum(summerkill),
+                   winterkill      = sum(winterkill),
+                   unknown         = sum(unknown),
+                   fishkills       = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)))
 
-# Air
-DunnettTest(mean_air ~ factor(fishkill_cause), data = fishkill.s, control = 'Summer Non-event')
+# Count of lakes with single or multiple fishkills, mean, SE
+sum(df.lake$fishkills == 1)
+sum(df.lake$fishkills > 1)
+mean(df.lake$fishkills)
+sd(df.lake$fishkills) / sqrt(length(df.lake$fishkills))
+max(df.lake$fishkills)
+min(df.lake$fishkills)
+
+# Calculate time between events that occurred in same lake
+time.events <- time.events %>%
+  mutate(month_after = month_after / 12) %>%
+  dplyr::summarize(time_after = year_after + month_after)
+
+# Summary statistics
+mean(time.events$time_after)
+sd(time.events$time_after) / sqrt(length(time.events$time_after))
+median(time.events$time_after)
+hist(time.events$time_after)
+
+# Count of waterbodies
+length(unique(levels(as.factor(df.historical$lat))))
+length(unique(levels(as.factor(df.historical$long))))
+
+# Fishkill causes by thermal category
+df.thermal <- df.historical %>%
+  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  reshape2::melt(., id.vars = c("state", "anthropogenic", "infectious", "summerkill", "winterkill", "unknown"),
+                 measure.vars = c("cool_temp", "cold_temp", "warm_temp", "unknown_temp")) %>%
+  group_by(variable, anthropogenic, infectious, summerkill, winterkill, unknown) %>%
+  dplyr::summarize(value = sum(value)) %>%
+  mutate(anthropogenic = ifelse(anthropogenic >= 1, value, 0),
+         infectious    = ifelse(infectious >= 1,    value, 0),
+         summerkill    = ifelse(summerkill >= 1,    value, 0),
+         winterkill    = ifelse(winterkill >= 1,    value, 0),
+         unknown       = ifelse(unknown >= 1,       value, 0),
+         value         = NULL) %>%
+  dplyr::rename(thermal.category = variable) %>%
+  reshape2::melt(., id.vars = c("thermal.category"),
+                 measure.vars = c("anthropogenic", "infectious", "summerkill",
+                                  "winterkill", "unknown")) %>%
+  dplyr::rename(cause = variable,
+                count = value) %>%
+  group_by(thermal.category, cause) %>%
+  dplyr::summarize(count = sum(count))
+
+# Number of thermal classifications available
+sum(df.thermal$count)
+
+# Fishkill causes by family
+df.family <- df.historical %>%
+  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  reshape2::melt(., id.vars = c("anthropogenic", "infectious", "summerkill", "winterkill", "unknown"),
+                 measure.vars = c("centrarchidae", "percidae", "esocidae", "ictaluridae", "clupeidae",
+                                  "cyprinidae", "salmonidae", "catostomidae", "sciaenidae",
+                                  "osmeridae", "lepisosteidae", "acipenseridae", "amiidae",
+                                  "cottoidae", "gasterosteidae", "gobiidae")) %>%
+  group_by(variable, anthropogenic, infectious, summerkill, winterkill, unknown) %>%
+  dplyr::summarize(value = sum(value)) %>%
+  mutate(anthropogenic = ifelse(anthropogenic >= 1, value, 0),
+         infectious    = ifelse(infectious >= 1,    value, 0),
+         summerkill    = ifelse(summerkill >= 1,    value, 0),
+         winterkill    = ifelse(winterkill >= 1,    value, 0),
+         unknown       = ifelse(unknown >= 1,       value, 0),
+         value         = NULL) %>%
+  dplyr::rename(family = variable) %>%
+  reshape2::melt(., id.vars = c("family"),
+                 measure.vars = c("anthropogenic", "infectious", "summerkill",
+                                  "winterkill", "unknown")) %>%
+  dplyr::rename(cause = variable,
+                count = value) %>%
+  group_by(family, cause) %>%
+  dplyr::summarize(count = as.numeric(sum(count))) %>%
+  mutate(family = as.character(family),
+         cause  = as.character(cause)) %>%
+  .[with(., order(family, cause)), ]
+
+# Fishkills by family
+df.family %>%
+  group_by(family) %>%
+  dplyr::summarize(count = sum(count))
+
+# Fishkills with taxonomic information
+df.historical %>%
+  filter(anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1, fish_families >= 1) %>%
+  nrow(.)
+
+# Fishkills with thermal category
+df.historical %>%
+  filter(warm_temp >= 1 | cool_temp >= 1 | cold_temp >= 1 | unknown_temp >= 1) %>%
+  dplyr::summarize(warm_temp    = sum(warm_temp),
+                   cool_temp    = sum(cool_temp),
+                   cold_temp    = sum(cold_temp),
+                   unknown_temp = sum(unknown_temp))
 ```
 
-```{r: Normal distributions}
-# Summer non-event
-control.lakes.w <- fishkill.s %>% 
-  filter(fishkill_cause == 'Summer Non-event')
-qqnorm(control.lakes.w$mean_surf)
-qqnorm(control.lakes.a$mean_air)
+### Step 4: Means
 
-# Summerkill
-summerkill.lakes.w <- fishkill.s %>%
-  filter(fishkill_cause == 'Summerkill')
-qqnorm(summerkill.lakes.w$mean_surf)
-qqnorm(summerkill.lakes.w$mean_air)
+```{r, echo = `FALSE`}
+#################################################################
+### Summer
+
+# Summer non-events
+summer.temp <- fishkill.summerkill %>%
+  filter(summerkill == 0)
+
+# Anthropogenic
+anthro.temp <- fishkill.summerkill %>%
+  filter(anthropogenic >= 1)
 
 # Infectious
-infectious.lakes.w <- fishkill.s %>%
-  filter(fishkill_cause == 'Infectious')
-qqnorm(infectious.lakes.w$mean_surf)
-qqnorm(infectious.lakes.w$mean_air)
-
-# Remove objects
-rm(control.lakes.w, summerkill.lakes.w, infectious.lakes.w)
-```
-
-### Step 4: Summerkills and infectious (Welch's t-tests)
-
-Welch's t-test for uneven variance between sample groups when comparing fishkill events and non-events.
-
-```{r: T-tests}
-# Summerkill
-ttest.s.w <- t.test(mean_surf_z ~ summerkill, data = fishkill.s)
-ttest.s.a <- t.test(mean_air ~ summerkill, data = fishkill.s)
-
-# Infectious
-ttest.i.w <- t.test(mean_surf_z ~ infectious, data = fishkill.s)
-ttest.i.a <- t.test(mean_air ~ infectious, data = fishkill.s)
-```
-
-```{r: Normal distributions}
-# Summer non-event
-qq.control <- fishkill.s %>%
-  filter(fishkill_cause == 'Summer Non-event')
-qqnorm(qq.control$mean_surf)
-qqnorm(qq.control$mean_air)
+infect.temp <- fishkill.summerkill %>%
+  filter(infectious >= 1)
 
 # Summerkill
-qq.summerkill <- fishkill.s %>%
-  filter(fishkill_cause == 'Summerkill')
-qqplot(x = qq.control$mean_surf_z, y = qq.summerkill$mean_surf_z)
-qqplot(x = qq.control$mean_air_z,  y = qq.summerkill$mean_air_z)
+summerkill.temp <- fishkill.summerkill %>%
+  filter(summerkill >= 1)
 
-# Infectious
-qq.infectious <- fishkill.s %>%
-  filter(fishkill_cause == 'Infectious')
-qqplot(x = qq.control$mean_surf_z, y = qq.infectious$mean_surf_z)
-qqplot(x = qq.control$mean_air_z,  y = qq.infectious$mean_air_z)
+#################################################################
+### Winter
 
-# Remove objects
-rm(qq.summerkill, qq.control, qq.infectious)
-```
-
-### Step 5: All fishkill causes and winterkills (ANOVAs, t-tests)
-
-ANOVAS to compare fishkill causes and temperatures (winter)
-
-```{r: ANOVA}
-# ANOVA (surface water)
-anova.w.s <- aov(mean_surf ~ factor(fishkill_cause), fishkill.w)
-summary(anova.w.s)
-
-# ANOVA (bottom water)
-anova.w.b <- aov(mean_bot ~ factor(fishkill_cause), fishkill.w)
-summary(anova.w)
-
-# ANOVA (air)
-anova.a <- aov(mean_air ~ factor(fishkill_cause), fishkill.w)
-summary(anova.a)
-
-# Tukey's test
-tuk.a <- TukeyHSD(anova.a)
-tuk.a
-
-# ANOVA (snow)
-anova.w.snow <- aov(snow ~ factor(fishkill_cause), df.snow)
-summary(anova.w.snow)
-
-# Tukey's test
-tuk.snow <- TukeyHSD(anova.w.snow)
-tuk.snow
-
-# ANOVA (ice duration)
-anova.w.i <- aov(ice_duration ~ winterkill, fishkill.i)
-summary(anova.w.i)
-
-# Remove objects
-#rm(anova.w.s, anova.w.b, anova.a, tuk.a,
-#   anova.w.snow, tuk.snow,
-#   anova.w.i)
-```
-
-```{r: Normal distributions}
 # Winter non-event
-control.lakes.w <- fishkill.w %>% 
-  filter(fishkill_cause == 'Winter Non-event')
-qqnorm(control.lakes.w$mean_surf)
-qqnorm(control.lakes.w$mean_air)
+winter.temp <- fishkill.winterkill %>%
+  filter(winterkill == 0)
 
 # Winterkill
-winterkill.lakes.w <- fishkill.w %>%
-  filter(fishkill_cause == 'Winterkill')
-qqplot(x = control.lakes.w$mean_surf_z, y = winterkill.lakes.w$mean_surf_z)
-qqplot(x = control.lakes.w$mean_air_z,  y = winterkill.lakes.w$mean_air_z)
+winterkill.temp <- fishkill.winterkill %>%
+  filter(winterkill >= 1)
 
-# Ice duration
-control.i    <- fishkill.i %>% filter(winterkill == 0)
-winterkill.i <- fishkill.i %>% filter(winterkill == 1)
-qqplot(control.i$ice_duration, winterkill.i$ice_duration)
+#################################################################
+### Anthropogenic
+
+# Mean (% change)
+((mean(anthro.temp$mean_air)  - mean(summer.temp$mean_air))  /  (mean(summer.temp$mean_air)) * 100)
+((mean(anthro.temp$mean_surf) - mean(summer.temp$mean_surf)) / (mean(summer.temp$mean_surf)) * 100)
+((mean(anthro.temp$mean_bot)  - mean(summer.temp$mean_bot))  / (mean(summer.temp$mean_bot))  * 100)
+
+# Median (% change)
+((median(anthro.temp$mean_air)  - median(summer.temp$mean_air))  /  (median(summer.temp$mean_air)) * 100)
+((median(anthro.temp$mean_surf) - median(summer.temp$mean_surf)) / (median(summer.temp$mean_surf)) * 100)
+((median(anthro.temp$mean_bot)  - median(summer.temp$mean_bot))  / (median(summer.temp$mean_bot))  * 100)
+
+#################################################################
+### Infectious
+
+# Mean (% change)
+((mean(infect.temp$mean_air)  - mean(summer.temp$mean_air))  /  (mean(summer.temp$mean_air)) * 100)
+((mean(infect.temp$mean_surf) - mean(summer.temp$mean_surf)) / (mean(summer.temp$mean_surf)) * 100)
+((mean(infect.temp$mean_bot)  - mean(summer.temp$mean_bot))  / (mean(summer.temp$mean_bot))  * 100)
+
+# Median (% change)
+((median(infect.temp$mean_air)  - median(summer.temp$mean_air))  /  (median(summer.temp$mean_air)) * 100)
+((median(infect.temp$mean_surf) - median(summer.temp$mean_surf)) / (median(summer.temp$mean_surf)) * 100)
+((median(infect.temp$mean_bot)  - median(summer.temp$mean_bot))  / (median(summer.temp$mean_bot))  * 100)
+
+#################################################################
+### Summerkill
+
+# Mean (% change)
+((mean(summerkill.temp$mean_air)  - mean(summer.temp$mean_air))  /  (mean(summer.temp$mean_air)) * 100)
+((mean(summerkill.temp$mean_surf) - mean(summer.temp$mean_surf)) / (mean(summer.temp$mean_surf)) * 100)
+((mean(summerkill.temp$mean_bot)  - mean(summer.temp$mean_bot))  / (mean(summer.temp$mean_bot))  * 100)
+
+# Median (% change)
+((median(summerkill.temp$mean_air)  - median(summer.temp$mean_air))  /  (median(summer.temp$mean_air)) * 100)
+((median(summerkill.temp$mean_surf) - median(summer.temp$mean_surf)) / (median(summer.temp$mean_surf)) * 100)
+((median(summerkill.temp$mean_bot)  - median(summer.temp$mean_bot))  / (median(summer.temp$mean_bot))  * 100)
+
+#################################################################
+### Winterkill
+
+# Mean (% change)
+((mean(winterkill.temp$mean_air)  - mean(winter.temp$mean_air))  /  (mean(winter.temp$mean_air)) * 100)
+((mean(winterkill.temp$mean_surf) - mean(winter.temp$mean_surf)) / (mean(winter.temp$mean_surf)) * 100)
+((mean(winterkill.temp$mean_bot)  - mean(winter.temp$mean_bot))  / (mean(winter.temp$mean_bot))  * 100)
+
+# Median (% change)
+((median(winterkill.temp$mean_air)  - median(winter.temp$mean_air))  /  (median(winter.temp$mean_air)) * 100)
+((median(winterkill.temp$mean_surf) - median(winter.temp$mean_surf)) / (median(winter.temp$mean_surf)) * 100)
+((median(winterkill.temp$mean_bot)  - median(winter.temp$mean_bot))  / (median(winter.temp$mean_bot))  * 100)
 
 # Remove objects
-rm(control.lakes.w, winterkill.lakes.w,
-   control.i, winterkill.i)
+rm(summer.temp, anthro.temp, infect.temp, summerkill.temp,
+   winter.temp, winterkill.temp)
 ```
 
-Welch's t-test due to unequal sample groups when comparing fishkill events and non-events
+### Step 4: Mean temperatures
 
-```{r: T-tests}
-ttest.w.w <- t.test(mean_surf_z ~ winterkill, data = fishkill.w)
-ttest.w.a <- t.test(mean_air_z ~ winterkill, data = fishkill.w)
+Compare mean temperatures of events and non-events
+
+Use Welch's t-test if Levene's test (p < 0.05), then Dunnett test
+Use ANOVA if Levene's test (p > 0.05), then Tukey HSD
+
+```{r, echo = `FALSE`}
+#################################################################
+### Summer
+
+# Summer non-event
+summer.lakes <- fishkill.summerkill %>% 
+  filter(fishkill_cause == 'Summer Non-event')
+qqnorm(summer.lakes$mean_air)
+qqnorm(summer.lakes$mean_surf)
+qqnorm(summer.lakes$mean_bot)
+
+# Anthropogenic
+anthro.lakes <- fishkill.summerkill %>%
+  filter(fishkill_cause == 'Anthropogenic')
+qqnorm(anthro.lakes$mean_air)
+qqnorm(anthro.lakes$mean_surf)
+qqnorm(anthro.lakes$mean_bot)
+
+# Summerkill
+summerkill.lakes <- fishkill.summerkill %>%
+  filter(fishkill_cause == 'Summerkill')
+qqnorm(summerkill.lakes$mean_air)
+qqnorm(summerkill.lakes$mean_surf)
+qqnorm(summerkill.lakes$mean_bot)
+
+# Infectious
+infectious.lakes <- fishkill.summerkill %>%
+  filter(fishkill_cause == 'Infectious')
+qqnorm(infectious.lakes$mean_air)
+qqnorm(infectious.lakes$mean_surf)
+qqnorm(infectious.lakes$mean_bot)
+
+#################################################################
+### Winter
+
+# Winter non-event
+winter.lakes <- fishkill.winterkill %>%
+  filter(fishkill_cause == 'Winter Non-event')
+qqnorm(winter.lakes$mean_air)
+qqnorm(winter.lakes$mean_surf)
+qqnorm(winter.lakes$mean_bot)
+
+# Winterkill
+winterkill.lakes <- fishkill.winterkill %>%
+  filter(fishkill_cause == 'Winterkill')
+qqnorm(winterkill.lakes$mean_air)
+qqnorm(winterkill.lakes$mean_surf)
+qqnorm(winterkill.lakes$mean_bot)
+
+# Remove objects
+rm(summer.lakes, anthro.lakes, infectious.lakes, summerkill.lakes,
+   winter.lakes, winterkill.lakes)
 ```
 
-One-sample t-test to see if the mean z-score is non-zero
+```{r, echo = `FALSE`}
+#################################################################
+### Air
 
-```{r: T-tests}
-# Subset winterkills
+# Levene test
+leveneTest(mean_air ~ fishkill_cause, fishkill.summerkill) # Welch
+leveneTest(mean_air ~ fishkill_cause, fishkill.winterkill) # ANOVA
+
+# Dunnett's test
+DunnettTest(mean_air ~ fishkill_cause, fishkill.summerkill, control = 'Summer Non-event')
+
+# Anthropogenic (not enough observations)
+#t.test(mean_air ~ anthropogenic, fishkill.summerkill)
+
+# Infectious
+t.test(mean_air ~ infectious, fishkill.summerkill)
+
+# Summerkill
+t.test(mean_air ~ summerkill, fishkill.summerkill)
+
+# Winterkill
+#winter.a <- aov(mean_air ~ fishkill_cause, fishkill.winterkill)
+winter.a <- aov(mean_air ~ as.factor(winterkill), fishkill.winterkill)
+summary(winter.a)
+TukeyHSD(winter.a)
+
+t.test(mean_air ~ winterkill, fishkill.winterkill)
+
+#################################################################
+### Surface water
+
+# Levene test
+leveneTest(mean_surf ~ fishkill_cause, fishkill.summerkill) # Welch
+leveneTest(mean_surf ~ fishkill_cause, fishkill.winterkill) # ANOVA (barely)
+
+# Dunnett's test
+DunnettTest(mean_surf ~ fishkill_cause, fishkill.summerkill, control = 'Summer Non-event')
+
+# Anthropogenic (not enough observations)
+#t.test(mean_surf ~ anthropogenic, fishkill.summerkill)
+
+# Infectious
+t.test(mean_surf ~ infectious, fishkill.summerkill)
+
+# Summerkill
+t.test(mean_surf ~ summerkill, fishkill.summerkill)
+
+# Winterkill
+#winter.s <- aov(mean_surf ~ fishkill_cause, fishkill.winterkill)
+winter.s <- aov(mean_surf ~ as.factor(winterkill), fishkill.winterkill)
+summary(winter.s)
+TukeyHSD(winter.s)
+
+#################################################################
+### Deep water
+
+# Levene test
+leveneTest(mean_bot ~ fishkill_cause, fishkill.summerkill) # Welch
+leveneTest(mean_bot ~ fishkill_cause, fishkill.winterkill) # ANOVA (barely)
+
+# Dunnett's test
+DunnettTest(mean_bot ~ fishkill_cause, fishkill.summerkill, control = 'Summer Non-event')
+
+# Anthropogenic (not enough observations)
+#t.test(mean_bot ~ anthropogenic, fishkill.summerkill)
+
+# Infectious
+t.test(mean_bot ~ infectious, fishkill.summerkill)
+
+# Summerkill
+t.test(mean_bot ~ summerkill, fishkill.summerkill)
+
+# Winterkill
+#winter.b <- aov(mean_bot ~ fishkill_cause, fishkill.winterkill)
+winter.b <- aov(mean_bot ~ as.factor(winterkill), fishkill.winterkill)
+summary(winter.b)
+TukeyHSD(winter.b)
+```
+
+### Step 4: z-scores
+
+Compare z-scores for events and non-events, and check if event z-scores are non-zero
+
+```{r, echo = `FALSE`}
+#################################################################
+### Summer
+
+# Summer non-event
+summer.lakes <- fishkill.summerkill %>% 
+  filter(fishkill_cause == 'Summer Non-event')
+qqnorm(summer.lakes$mean_air_z)
+qqnorm(summer.lakes$mean_surf_z)
+qqnorm(summer.lakes$mean_bot_z)
+
+# Anthropogenic
+anthro.lakes <- fishkill.summerkill %>%
+  filter(fishkill_cause == 'Anthropogenic')
+qqnorm(anthro.lakes$mean_air_z)
+qqnorm(anthro.lakes$mean_surf_z)
+qqnorm(anthro.lakes$mean_bot_z)
+
+# Infectious
+infectious.lakes <- fishkill.summerkill %>%
+  filter(fishkill_cause == 'Infectious')
+qqnorm(infectious.lakes$mean_air_z)
+qqnorm(infectious.lakes$mean_surf_z)
+qqnorm(infectious.lakes$mean_bot_z)
+
+# Summerkill
+summerkill.lakes <- fishkill.summerkill %>%
+  filter(fishkill_cause == 'Summerkill')
+qqnorm(summerkill.lakes$mean_air_z)
+qqnorm(summerkill.lakes$mean_surf_z)
+qqnorm(summerkill.lakes$mean_bot_z)
+
+#################################################################
+### Winter
+
+# Winter non-event
+winter.lakes <- fishkill.winterkill %>%
+  filter(fishkill_cause == 'Winter Non-event')
+qqnorm(winter.lakes$mean_air_z)
+qqnorm(winter.lakes$mean_surf_z)
+qqnorm(winter.lakes$mean_bot_z)
+
+# Winterkill
+winterkill.lakes <- fishkill.winterkill %>%
+  filter(fishkill_cause == 'Winterkill')
+qqnorm(winterkill.lakes$mean_air_z)
+qqnorm(winterkill.lakes$mean_surf_z)
+qqnorm(winterkill.lakes$mean_bot_z)
+
+# Remove objects
+rm(summer.lakes, anthro.lakes, infectious.lakes, summerkill.lakes,
+   winter.lakes, winterkill.lakes)
+```
+
+```{r, echo = `FALSE`}
+#################################################################
+### Air
+
+# Levene test
+leveneTest(mean_air_z ~ fishkill_cause, fishkill.summerkill) # Welch
+leveneTest(mean_air_z ~ fishkill_cause, fishkill.winterkill) # ANOVA
+
+# Dunnett's test
+DunnettTest(mean_air_z ~ fishkill_cause, fishkill.summerkill, control = 'Summer Non-event')
+
+# Anthropogenic (not enough observations)
+#t.test(mean_air_z ~ anthropogenic, fishkill.summerkill)
+
+# Infectious
+t.test(mean_air_z ~ infectious, fishkill.summerkill)
+
+# Summerkill
+t.test(mean_air_z ~ summerkill, fishkill.summerkill)
+
+# Winterkill
+winter.a <- aov(mean_air_z ~ fishkill_cause, fishkill.winterkill)
+winter.a <- aov(mean_air ~ winterkill, fishkill.winterkill)
+summary(winter.a)
+TukeyHSD(winter.a)
+
+#################################################################
+### Surface water
+
+# Levene test
+leveneTest(mean_surf_z ~ fishkill_cause, fishkill.summerkill) # Welch
+leveneTest(mean_surf_z ~ fishkill_cause, fishkill.winterkill) # ANOVA (barely)
+
+# Dunnett's test
+DunnettTest(mean_surf_z ~ fishkill_cause, fishkill.summerkill, control = 'Summer Non-event')
+
+# Anthropogenic (not enough observations)
+#t.test(mean_surf_z ~ anthropogenic, fishkill.summerkill)
+
+# Infectious
+t.test(mean_surf_z ~ infectious, fishkill.summerkill)
+
+# Summerkill
+t.test(mean_surf_z ~ summerkill, fishkill.summerkill)
+
+# Winterkill
+winter.s <- aov(mean_surf_z ~ fishkill_cause, fishkill.winterkill)
+summary(winter.s)
+TukeyHSD(winter.s)
+
+#################################################################
+### Deep water
+
+# Levene test
+leveneTest(mean_bot_z ~ fishkill_cause, fishkill.summerkill) # Welch
+leveneTest(mean_bot_z ~ fishkill_cause, fishkill.winterkill) # ANOVA (barely)
+
+# Dunnett's test
+DunnettTest(mean_bot_z ~ fishkill_cause, fishkill.summerkill, control = 'Summer Non-event')
+
+# Anthropogenic (not enough observations)
+#t.test(mean_bot_z ~ anthropogenic, fishkill.summerkill)
+
+# Infectious
+t.test(mean_bot_z ~ infectious, fishkill.summerkill)
+
+# Summerkill
+t.test(mean_bot_z ~ summerkill, fishkill.summerkill)
+
+# Winterkill
+winter.b <- aov(mean_bot_z ~ fishkill_cause, fishkill.winterkill)
+summary(winter.b)
+TukeyHSD(winter.b)
+```
+
+```{r, echo = `FALSE`}
+# Anthropogenic
+ttest.a.z <- filter(fishkill.all, fishkill_cause == 'Anthropogenic')
+t.test(ttest.a.z$mean_air_z,  mu = 0)
+t.test(ttest.a.z$mean_surf_z, mu = 0)
+t.test(ttest.a.z$mean_bot_z,  mu = 0)
+
+# Infectious
+ttest.i.z <- filter(fishkill.all, fishkill_cause == 'Infectious')
+t.test(ttest.i.z$mean_air_z,  mu = 0)
+t.test(ttest.i.z$mean_surf_z, mu = 0)
+t.test(ttest.i.z$mean_bot_z,  mu = 0)
+
+# Summerkill
+ttest.s.z <- filter(fishkill.all, fishkill_cause == 'Summerkill')
+t.test(ttest.s.z$mean_air_z,  mu = 0)
+t.test(ttest.s.z$mean_surf_z, mu = 0)
+t.test(ttest.s.z$mean_bot_z,  mu = 0)
+
+# Winterkill
 ttest.w.z <- filter(fishkill.all, fishkill_cause == 'Winterkill')
-
-# Surface water
+t.test(ttest.w.z$mean_air_z,  mu = 0)
 t.test(ttest.w.z$mean_surf_z, mu = 0)
-
-# Bottom water
-t.test(ttest.w.z$mean_bot_z, mu = 0)
-
-# Air water
-t.test(ttest.w.z$mean_air_z, mu = 0)
+t.test(ttest.w.z$mean_bot_z,  mu = 0)
 ```
 
-### Step 6: Moran's tests (need predictions_1)
+### Step 5: Snow and ice duration
 
-```{r: Moran's tests}
+Compare snow accumulation and ice duration for winterkills and winter non-events
 
-fig3a_data <-df.historical %>%
-  mutate(summerkill_binary = ifelse(is.na(summerkill) | summerkill == 'neg', 0 , 1)) %>%
-  group_by(site_id) %>%
-  summarise(MME = max(summerkill_binary), V1 = mean(long), V2 = mean(lat))
+```{r, echo = `FALSE`}
+# Winter non-event
+winter.lakes <- fishkill.winterkill %>% 
+  filter(fishkill_cause == 'Winter Non-event')
+qqnorm(winter.lakes$mean_air)
+qqnorm(winter.lakes$mean_surf)
+qqnorm(winter.lakes$mean_bot)
 
-fig3b_data <- df.future %>%
-  dplyr::select(site_id, lat, long, year) %>%
-  bind_cols(predictions_1) %>%
-  mutate(event = pos) %>%
-  mutate(no_event_prob = 1 - event) %>%
+# Winterkill
+winterkill.lakes <- fishkill.winterkill %>%
+  filter(fishkill_cause == 'Winterkill')
+qqplot(x = winter.lakes$mean_air_z,  y = winterkill.lakes$mean_air_z)
+qqplot(x = winter.lakes$mean_surf_z, y = winterkill.lakes$mean_surf_z)
+qqplot(x = winter.lakes$mean_bot_z,  y = winterkill.lakes$mean_bot_z)
+
+# Ice duration
+nonevent.ice   <- fishkill.ice %>% filter(winterkill == 0)
+winterkill.ice <- fishkill.ice %>% filter(winterkill == 1)
+qqplot(nonevent.ice$ice_duration, winterkill.ice$ice_duration)
+
+# Remove objects
+rm(winter.lakes, winterkill.lakes,
+   nonevent.ice, winterkill.ice)
+```
+
+```{r, echo = `FALSE`}
+# Levene test (snow)
+leveneTest(snow ~ as.factor(winterkill), fishkill.snow) # ANOVA / Tuk
+
+# ANOVA (snow)
+anova.w.snow <- aov(snow ~ as.factor(winterkill), fishkill.snow)
+summary(anova.w.snow)
+TukeyHSD(anova.w.snow)
+
+# Levene test (ice duration)
+leveneTest(ice_duration ~ as.factor(winterkill), fishkill.ice) # ANOVA / Tuk (barely)
+
+# ANOVA (ice duration)
+anova.w.ice <- aov(ice_duration ~ as.factor(winterkill), fishkill.ice)
+summary(anova.w.ice)
+TukeyHSD(anova.w.ice)
+
+# Remove objects
+rm(anova.w.snow, anova.w.ice)
+```
+
+### Step 6: Thermal categories
+
+Linear regression with CTmax or thermal preference and difference with maximum surface water temp of summerkills
+
+```{r, echo = `FALSE`}
+# Cold-water fish
+cold.temp <- table(fishkill.all$fishkill_cause, fishkill.all$cold_temp)
+cold.temp <- cold.temp[,2]
+
+# Cool-water fish
+cool.temp <- table(fishkill.all$fishkill_cause, fishkill.all$cool_temp)
+cool.temp <- cool.temp[,2]
+
+# Warm-water fish
+warm.temp <- table(fishkill.all$fishkill_cause, fishkill.all$warm_temp)
+warm.temp <- warm.temp[,2]
+
+# Combine tables
+temp.table <- cold.temp %>%
+  cbind(., cool.temp, warm.temp) %>%
+  .[-3,]
+
+# Fix columns names
+colnames(temp.table) <- c("cold.temp", "cool.temp", "warm.temp")
+
+# Fisher exact test
+#fisher.test(temp.table)
+fisher_test(temp.table, detailed = TRUE)
+
+# Causes
+anthropogenic <- temp.table[c("Anthropogenic"),]
+infectious    <- temp.table[c("Infectious"),]
+summerkill    <- temp.table[c("Summerkill"),]
+winterkill    <- temp.table[c("Winterkill"),]
+
+# Thermal categories
+total <- c(sum(temp.table[,c("cold.temp")]),
+           sum(temp.table[,c("cool.temp")]),
+           sum(temp.table[,c("warm.temp")]))
+
+# Non-causes
+non.anthropogenic <- total - anthropogenic
+non.infectious    <- total - infectious
+non.summerkill    <- total - summerkill
+non.winterkill    <- total - winterkill
+
+# Anthropogenic
+table.a <- as.table(rbind(anthropogenic, non.anthropogenic))
+dimnames(table.a) <- list(Anthropogenic = c("Yes", "No"),
+                         Category   = c("Cold", "Cool", "Warm"))
+
+fisher_test(table.a, detailed = TRUE)
+pairwise_fisher_test(table.a, p.adjust.method = "bonferroni")
+
+# Infectious
+table.i <- as.table(rbind(infectious, non.infectious))
+dimnames(table.i) <- list(Infectious = c("Yes", "No"),
+                          Category   = c("Cold", "Cool", "Warm"))
+
+fisher_test(table.i, detailed = TRUE)
+pairwise_fisher_test(table.i, p.adjust.method = "bonferroni")
+
+# Summerkill
+table.s <- as.table(rbind(summerkill, non.summerkill))
+dimnames(table.s) <- list(Summerkill = c("Yes", "No"),
+                          Category   = c("Cold", "Cool", "Warm"))
+
+fisher_test(table.s, detailed = TRUE)
+pairwise_fisher_test(table.s, p.adjust.method = "bonferroni")
+
+# Winterkill
+table.w <- as.table(rbind(winterkill, non.winterkill))
+dimnames(table.w) <- list(Winterkill = c("Yes", "No"),
+                         Category   = c("Cold", "Cool", "Warm"))
+
+fisher_test(table.w, detailed = TRUE)
+pairwise_fisher_test(table.w)
+
+# Multiple comparisons
+#fisher.multcomp(temp.table, p.method = "bonferroni")
+
+# Reformat CTmax data
+thermal <- thermal %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower) %>%
+  mutate(pref_min = as.numeric(pref_min),
+         pref_max = as.numeric(pref_max),
+         crit_min = as.numeric(crit_min),
+         crit_max = as.numeric(crit_max)) %>%
+  dplyr::select(., c("family", "pref_min", "pref_max", "crit_min", "crit_max",)) %>%
+  na.omit(.) %>%
+  group_by(family) %>%
+  dplyr::summarize(pref_min = mean(pref_min),
+                   pref_max = mean(pref_max),
+                   crit_min = mean(crit_min),
+                   crit_max = mean(crit_max))
+
+# Centrarchidae
+thermal.centrarchidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(centrarchidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%
+  mutate(family = as.character("centrarchidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "centrarchidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "centrarchidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "centrarchidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "centrarchidae")])
+
+# Percidae
+thermal.percidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(percidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("percidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "percidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "percidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "percidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "percidae")])
+
+# Esocidae
+thermal.esocidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(esocidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("esocidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "esocidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "esocidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "esocidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "esocidae")])
+
+# Ictaluridae
+thermal.ictaluridae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(ictaluridae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("ictaluridae"),
+         pref_min = thermal$pref_min[which(thermal$family == "ictaluridae")],
+         pref_max = thermal$pref_max[which(thermal$family == "ictaluridae")],
+         crit_min = thermal$crit_min[which(thermal$family == "ictaluridae")],
+         crit_max = thermal$crit_max[which(thermal$family == "ictaluridae")])
+
+# Salmonidae
+thermal.salmonidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(salmonidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("salmonidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "salmonidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "salmonidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "salmonidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "salmonidae")])
+
+# Catostomidae
+thermal.catostomidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(catostomidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("catostomidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "catostomidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "catostomidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "catostomidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "catostomidae")])
+
+# Sciaenidae
+thermal.sciaenidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(sciaenidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("sciaenidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "sciaenidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "sciaenidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "sciaenidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "sciaenidae")])
+
+# Clupeidae
+thermal.clupeidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(clupeidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("clupeidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "clupeidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "clupeidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "clupeidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "clupeidae")])
+
+# Join CTmax df
+thermal.families <- thermal.centrarchidae %>%
+  rbind(., thermal.percidae) %>%
+  rbind(., thermal.esocidae) %>%
+  rbind(., thermal.ictaluridae) %>%
+  rbind(., thermal.clupeidae) %>%
+  rbind(., thermal.salmonidae) %>%
+  rbind(., thermal.sciaenidae) %>%
+  rbind(., thermal.catostomidae) %>%
+  # Difference
+  mutate(
+    diff_crit_air    = max_air -  crit_min,
+    diff_crit_surf   = max_surf - crit_min,
+    diff_crit_bot    = max_bot -  crit_min,
+    diff_pref_air    = max_air -  pref_min,
+    diff_pref_surf   = max_surf - pref_min,
+    diff_pref_bot    = max_bot -  pref_min) %>%
+  # Pref temperature
+  rowwise() %>%
+  mutate(
+    pref_mean = sum (pref_min, pref_max, na.rm = TRUE) / 2)
+
+# Summarize family data
+thermal.sum <- thermal.families %>%
+  group_by(family) %>%
+  dplyr::summarize(
+    # Lyons et al. 2019
+    pref_min         = pref_min,
+    pref_max         = pref_max,
+    crit_min         = crit_min,
+    crit_max         = crit_max,
+    # Max air
+    max_air_n        = length(max_air),
+    max_air_mean     = mean(max_air),
+    max_air_sd       = sd(max_air),
+    max_air_se       = max_air_sd / sqrt(max_air_n),
+    # Max air (z-score)
+    max_air_z_n      = length(max_air_z),
+    max_air_z_mean   = mean(max_air_z),
+    max_air_z_sd     = sd(max_air_z),
+    max_air_z_se     = max_air_z_sd / sqrt(max_air_z_n),
+    # Max surface water
+    max_surf_n       = length(max_surf),
+    max_surf_mean    = mean(max_surf),
+    max_surf_sd      = sd(max_surf),
+    max_surf_se      = max_surf_sd / sqrt(max_surf_n),
+    # Max surface water (z-score)
+    max_surf_z_n     = length(max_surf_z),
+    max_surf_z_mean  = mean(max_surf_z),
+    max_surf_z_sd    = sd(max_surf_z),
+    max_surf_z_se    = max_surf_z_sd / sqrt(max_surf_z_n),
+    # Max bottom water
+    max_bot_n        = length(max_bot),
+    max_bot_mean     = mean(max_bot),
+    max_bot_sd       = sd(max_bot),
+    max_bot_se       = max_bot_sd / sqrt(max_bot_n),
+    # Max bottom water (z-score)
+    max_bot_z_n      = length(max_bot_z),
+    max_bot_z_mean   = mean(max_bot_z),
+    max_bot_z_sd     = sd(max_bot_z),
+    max_bot_z_se     = max_bot_z_sd / sqrt(max_bot_z_n)) %>%
+  distinct(.)
+
+# Linear regression CTmax ~ diff w/ max surf
+summary(lm(crit_min ~ diff_crit_surf, thermal.families))
+
+# Linear regression preferred temp ~ diff w/ max surf
+summary(lm(pref_mean ~ diff_crit_surf, thermal.families))
+
+# Remove objects
+rm(df.family, df.lake, df.snow, df.thermal,
+   fishkill.all, fishkill.ice, fishkill.snow,
+   fishkill.summerkill, fishkill.winterkill,
+   temp.table,
+   anthropogenic, non.anthropogenic,
+   infectious, non.infectious,
+   summerkill, non.summerkill,
+   winterkill, non.winterkill,
+   cold.temp, cool.temp, warm.temp,
+   table.a, table.i, table.s, table.w,
+   total, thermal.catostomidae, thermal.centrarchidae,
+   thermal.clupeidae, thermal.esocidae, thermal.families,
+   thermal.ictaluridae, thermal.percidae, thermal.salmonidae,
+   thermal.sciaenidae, thermal.sum, thermal, time.events)
+```
+
+### Step 7: Historical probabilities
+
+```{r, echo = `FALSE`}
+# Subset variables 
+ridge_a1_historical <- df.test %>%
+  dplyr::select(., lat, long, season, population,
+                max_air, max_air_z, ice_duration, precip)
+
+# Replace summerkills with 0s
+ridge_a1_historical$summerkill <- 0
+
+# Create dummy model matrix
+newx.a1 <- model.matrix(summerkill ~ ., ridge_a1_historical)
+
+# Calculate probabilities
+ridge_a1_historical$prob <- as.vector(predict(ridge_a1,
+                                              newx = newx.a1, type = "prob",
+                                              s = ridge_a1$bestTune$lambda))
+
+# Reformat probabilities
+ridge_a1_historical <- ridge_a1_historical %>%
+  mutate(prob_pos = prob$pos,
+         prob     = NULL,
+         lat      = df.historical$lat,
+         long     = df.historical$long) %>%
+  dplyr::rename(prob = prob_pos)
+
+# Quick plot
+#ggplot() +
+#  geom_point(ridge_a1_historical,
+#             mapping = aes(x = max_air, y = prob),
+#             alpha = 0.002)
+
+# Save probabilities
+write.csv(ridge_a1_historical, "data/processed/ridge_a1_historical.csv")
+```
+
+```{r, echo = `FALSE`}
+# Subset variables 
+ridge_w1_historical <- df.test %>%
+  dplyr::select(., lat, long, season, population,
+                mean_surf, mean_surf_z, ice_duration, precip)
+
+# Replace summerkills with 0s
+ridge_w1_historical$summerkill <- 0
+
+# Create dummy model matrix
+newx.w1 <- model.matrix(summerkill ~ ., ridge_w1_historical)
+
+# Calculate probabilities
+ridge_w1_historical$prob <- as.vector(predict(ridge_w1,
+                                              newx = newx.w1, type = "prob",
+                                              s = ridge_w1$bestTune$lambda))
+
+# Reformat probabilities
+ridge_w1_historical <- ridge_w1_historical %>%
+  mutate(prob_pos = prob$pos,
+         prob     = NULL,
+         lat      = df.historical$lat,
+         long     = df.historical$long) %>%
+  dplyr::rename(prob = prob_pos)
+
+# Quick plot
+#ggplot() +
+#  geom_point(ridge_w1_historical,
+#             mapping = aes(x = mean_surf, y = prob),
+#             alpha = 0.002)
+
+# Save probabilities
+write.csv(ridge_w1_historical, "data/processed/ridge_w1_historical.csv")
+```
+
+### Step 9: Historical and future probabilities
+
+```{r, echo = `FALSE`}
+# Subset variables 
+ridge_a1_future <- df.future %>%
+  dplyr::select(., lat, long, season, population,
+                max_air, max_air_z, precip)
+
+# Calculate probabilities
+ridge_a1_future$prob <- as.vector(predict(ridge_a1_revised,
+                                          newdata = ridge_a1_future, type = "prob",
+                                          s = ridge_a1_revised$bestTune$lambda))
+
+# Reformat probabilities
+ridge_a1_future <- ridge_a1_future %>%
+  mutate(prob_pos = prob$pos,
+         prob     = NULL,
+         lat      = df.future$lat,
+         long     = df.future$long) %>%
+  dplyr::rename(prob = prob_pos)
+
+# Save probabilities
+write.csv(ridge_a1_future, "data/processed/ridge_a1_future.csv")
+```
+
+```{r, echo = `FALSE`}
+# Subset variables 
+ridge_w1_future <- df.future %>%
+  dplyr::select(., lat, long, season, population,
+                mean_surf, mean_surf_z, precip)
+
+# Calculate probabilities
+ridge_w1_future$prob <- as.vector(predict(ridge_w1_revised,
+                                          newdata = ridge_w1_future, type = "prob",
+                                          s = ridge_w1_revised$bestTune$lambda))
+
+# Reformat probabilities
+ridge_w1_future <- ridge_w1_future %>%
+  mutate(prob_pos = prob$pos,
+         prob     = NULL,
+         lat      = df.future$lat,
+         long     = df.future$long) %>%
+  dplyr::rename(prob = prob_pos)
+
+# Save probabilities
+write.csv(ridge_w1_future, "data/processed/ridge_w1_future.csv")
+```
+
+### Step 10: Moran's tests
+
+```{r, echo = `FALSE`}
+# Historical (2003-2013)
+prob.a <- df.historical %>%
+  dplyr::select(lat, long, year) %>%
+  mutate(prob_air   = ridge_a1_historical$prob,
+         prob_water = ridge_w1_historical$prob,
+         no_air     = 1 - prob_air,
+         no_water   = 1 - prob_water) %>%
+  group_by(lat, long) %>%
+  dplyr::summarize(prob_air   = (1 - prod(no_air)),
+                   prob_water = (1 - prod(no_water)),
+                   V1   = mean(long),
+                   V2   = mean(lat)) 
+
+# Future (2041-2059)
+prob.b <- df.future %>%
+  dplyr::select(lat, long, year) %>%
+  mutate(prob_air   = ridge_a1_future$prob,
+         prob_water = ridge_w1_future$prob,
+         no_air     = 1 - prob_air,
+         no_water   = 1 - prob_water) %>%
   filter(year > 2030 & year < 2070) %>%
-  group_by(site_id) %>%
-  summarise(prob = (1 - prod(no_event_prob)), V1 = mean(long), V2 = mean(lat)) 
+  group_by(lat, long) %>%
+  dplyr::summarize(prob_air   = (1 - prod(no_air)),
+                   prob_water = (1 - prod(no_water)),
+                   V1   = mean(long),
+                   V2   = mean(lat)) 
 
-fig3c_data <- future_data %>%
-  dplyr::select(wbic, lat, lon, year) %>%
-  bind_cols(predictions_1)%>%
-  mutate(event = pos) %>%
-  mutate(no_event_prob = 1 - event) %>%
+# Future (2081-2099)
+prob.c <- df.future %>%
+  dplyr::select(lat, long, year) %>%
+  mutate(prob_air   = ridge_a1_future$prob,
+         prob_water = ridge_w1_future$prob,
+         no_air     = 1 - prob_air,
+         no_water   = 1 - prob_water) %>%
   filter(year > 2070) %>%
-  group_by(wbic) %>%
-  summarise(prob = (1 - prod(no_event_prob)), V1 = mean(lon), V2 = mean(lat)) 
+  group_by(lat, long) %>%
+  dplyr::summarize(prob_air   = (1 - prod(no_air)),
+                   prob_water = (1 - prod(no_water)),
+                   V1   = mean(long),
+                   V2   = mean(lat)) 
 
-coordinates(fig3a_data) <- c('V1', 'V2')
-coordinates(fig3b_data) <- c('V1', 'V2')
-coordinates(fig3c_data) <- c('V1', 'V2')
+# Convert coordinates to SpatialPoints
+coordinates(prob.a) <- c('V1', 'V2')
+coordinates(prob.b) <- c('V1', 'V2')
+coordinates(prob.c) <- c('V1', 'V2')
 
-nb_p1 <- knn2nb(knearneigh(coordinates(coordinates(fig3a_data)),longlat = TRUE, k = 2))
-nb_p2 <- knn2nb(knearneigh(coordinates(coordinates(fig3b_data)),longlat = TRUE, k = 2))
-nb_p3 <- knn2nb(knearneigh(coordinates(coordinates(fig3c_data)),longlat = TRUE, k = 2))
+# Calculate weights
+nb.a <- knn2nb(knearneigh(coordinates(coordinates(prob.a)), longlat = TRUE, k = 2))
+nb.b <- knn2nb(knearneigh(coordinates(coordinates(prob.b)), longlat = TRUE, k = 2))
+nb.c <- knn2nb(knearneigh(coordinates(coordinates(prob.c)), longlat = TRUE, k = 2))
 
-weights_p1 <- nb2listw(nb_p1)
-weights_p2 <- nb2listw(nb_p2)
-weights_p3 <- nb2listw(nb_p3)
+# Add weights
+weights.a <- nb2listw(nb.a)
+weights.b <- nb2listw(nb.b)
+weights.c <- nb2listw(nb.c)
 
-moran_MME   <- moran.test(fig3a_data$MME, weights_p1)
-moran_Prob2 <- moran.test(fig3b_data$prob, weights_p2)
-moran_Prob3 <- moran.test(fig3c_data$prob, weights_p3)
+# Moran's tests for air temperature
+air.prob.a <- moran.test(prob.a$prob_air, weights.a)
+air.prob.b <- moran.test(prob.b$prob_air, weights.b)
+air.prob.c <- moran.test(prob.c$prob_air, weights.c)
 
-moran_MME
-moran_Prob2
-moran_Prob3
+# Print results
+air.prob.a
+air.prob.b
+air.prob.c
+
+# Moran's tests for water temperature
+water.prob.a <- moran.test(prob.a$prob_water, weights.a)
+water.prob.b <- moran.test(prob.b$prob_water, weights.b)
+water.prob.c <- moran.test(prob.c$prob_water, weights.c)
+
+# Print results
+water.prob.a
+water.prob.b
+water.prob.c
 ```
 
 ######################################
+Proceed to `07_figures.Rmd`
 ######################################

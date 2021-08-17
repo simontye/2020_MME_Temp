@@ -1,110 +1,359 @@
 ---
 title: "prepare models"
-author: "fishkill friends"
-date: "2021_03_03"
+author: "SPT"
+date: "2021_08_16"
 output: github_document
 ---
 
 ### Step 1: Load packages and data
 
-```{r: Load packages and data}
+```{r, echo = `FALSE`}
+### Can't install Compositional on Big Sur; R 4.1
+
 # Load packages
 library(tidyverse)
 library(caret)
 library(dplyr)
+#library(Compositional)
 
 # Reset global environment
 rm(list = ls())
 
 # Change working directory
-setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/processed")
+setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/data")
 
-# Load historical data
-df.historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
-df.future     <- read.csv(file = "df_future.csv", head = TRUE, sep = ",")
+# Load data
+df.historical <- read.csv(file = "processed/df_historical.csv", head = TRUE, sep = ",")
+df.future     <- read.csv(file = "processed/df_future.csv", head = TRUE, sep = ",")
 ```
 
-### Step 2: Partition and scale data
+### Step 2: Format data
 
-This verifies formatting and partitions the data into training and testing sets, which are scaled to allow for coefficient comparison. This is the same workflow as Till et al. (2019) except that I switched the file conversion from tibble to dataframe because of parsing errors on my end.
+```{r echo = `FALSE`}
+######################################
+# Air variables
+var.air.raw     <- c("max_air", "mean_air", "min_air")
+var.air.z       <- c("max_air_z", "mean_air_z", "min_air_z")
+var.air.other   <- c("air_quad_temp", "precip", "ice_duration")
+var.air         <- c(var.air.raw,
+                     var.air.z,
+                     var.air.other)
 
-```{r: Format data}
-# Check formatting of historical dataset
+# Water variables
+var.water.raw   <- c("max_bot", "max_surf", "mean_bot", "mean_surf")
+var.water.z     <- c("max_surf_z", "mean_surf_z", "max_bot_z", "mean_bot_z")
+var.water.other <- c("peak_temp", "layer_diff", "water_quad_temp",
+                     "variance_after_ice_30", "variance_after_ice_60", "schmidt",
+                     "cumulative_above_0", "cumulative_above_5", "cumulative_above_10") #"precip", "ice_duration")
+var.water.s     <- c("max_surf", "mean_surf", "max_surf_z", "mean_surf_z")
+var.water.b     <- c("max_bot", "mean_bot", "max_bot_z", "mean_bot_z")
+var.water       <- c(var.water.raw,
+                     var.water.z,
+                     var.water.other)
+
+# All variables
+var.all         <- c(var.air, var.water)
+
+# Fish variables
+var.fish   <- c("centrarchidae", "percidae", "esocidae", "ictaluridae",
+                "cyprinidae", "salmonidae", "catostomidae", "sciaenidae",
+                "clupeidae", "osmeridae", "lepisosteidae", "acipenseridae",
+                "amiidae", "cottoidae", "gasterosteidae", "gobiidae",
+                "fish_families", "fish_species")
+
+# Cause variables
+var.cause <- c("anthropogenic", "infectious", "summerkill", "winterkill", "unknown")          
+
+# Fish thermal variables
+var.temp  <- c("cold_temp", "cool_temp", "warm_temp", "unknown_temp")
+
+# All fish variables
+var.all.fish <-c(var.fish, var.temp, var.cause)
+
+######################################
+# Reduce historical dataframe for models
 df.historical <- df.historical %>%
-  mutate(site_id      = as.factor(site_id),
-         year         = as.character(year),
-         month        = as.character(month),
-         season       = as.factor(season),
-         summerkill   = as.factor(summerkill),
-         lat          = as.numeric(lat),
-         long         = as.numeric(long),
-         population   = as.numeric(population),
-         state        = as.factor(state),
-         mean_bot_z   = as.numeric(mean_bot_z),
-         mean_surf_z  = as.numeric(mean_surf_z),
-         water_pca    = as.numeric(water_pca),
-         mean_air_z   = as.numeric(mean_air_z),
-         air_pca      = as.numeric(air_pca)) %>%
-    dplyr::select(., c("year", "month", "season",
-                       "summerkill", "lat", "long",
-                       "population", "state",
-                       "max_surf", "mean_surf", "max_bot", "mean_bot",
-                       "max_surf_z", "mean_surf_z", "max_bot_z", "mean_bot_z",
-                       "max_air", "mean_air", "min_air",
-                       "max_air_z", "mean_air_z", "min_air_z",
-                       "air_pca", "water_pca",
-                       "variance_after_ice_30", "variance_after_ice_60",
-                       "log_schmidt", "ice_duration", "layer_diff",
-                       "air_quad_temp", "water_quad_temp", "peak_temp",
-                       "cumulative_above_0", "cumulative_above_5", "cumulative_above_10",
-                       "site_id")) %>%
-    mutate(summerkill = fct_recode(summerkill,
-                                 "neg" = "0",
-                                 "pos" = "1"))
+    mutate(
+      year         = as.character(year),
+      month        = as.character(month),
+      season       = as.factor(season),
+      summerkill   = as.numeric(summerkill),
+      lat          = as.numeric(lat),
+      long         = as.numeric(long),
+      state        = as.factor(state),
+      population   = as.numeric(population),
+      ice_duration = as.numeric(ice_duration)) %>%
+  dplyr::select(., c(year, month, season, summerkill, lat, long, state, population,
+                     all_of(var.all), all_of(var.all.fish)))
 
-# Check formatting of historical dataset
-test <- df.future %>%
-  mutate(site_id      = as.factor(site_id),
-         year         = as.character(year),
-         month        = as.character(month),
-         season       = as.factor(season),
-         lat          = as.numeric(lat),
-         long         = as.numeric(long),
-         population   = as.numeric(population),
-         state        = as.factor(state),
-         mean_bot_z   = as.numeric(mean_bot_z),
-         mean_surf_z  = as.numeric(mean_surf_z),
-         water_pca    = as.numeric(water_pca),
-         mean_air_z   = as.numeric(mean_air_z),
-         air_pca      = as.numeric(air_pca)) %>%
-    dplyr::select(., c("year", "month", "season",
-                       "lat", "long",
-                       "population", "state",
-                       "max_surf", "mean_surf", "max_bot", "mean_bot",
-                       "max_surf_z", "mean_surf_z", "max_bot_z", "mean_bot_z",
-                       "max_air", "mean_air", "min_air",
-                       "max_air_z", "mean_air_z", "min_air_z",
-                       "air_pca", "water_pca",
-                       "variance_after_ice_30", "variance_after_ice_60",
-                       "log_schmidt", "ice_duration", "layer_diff",
-                       "air_quad_temp", "water_quad_temp", "peak_temp",
-                       "cumulative_above_0", "cumulative_above_5", "cumulative_above_10",
-                       "site_id"))
+######################################
+# Reduce future dataframe for models
+df.future <- df.future %>%
+    mutate(
+      year         = as.character(year),
+      month        = as.character(month),
+      season       = as.factor(season),
+      lat          = as.numeric(lat),
+      long         = as.numeric(long),
+      state        = as.factor(state),
+      population   = as.numeric(population),
+      ice_duration = as.numeric(ice_duration)) %>%
+  dplyr::select(., c(year, month, season, lat, long, state, population,
+                     all_of(var.all)))
 ```
 
-```{r: Create training and testing sets}
+### Step 3: Historical PCAs
+
+```{r echo = `FALSE`}
+#######################################
+# Air (raw and z-score)
+
+# PCA
+air.both.pca <- df.historical %>%
+  dplyr::select(all_of(c(var.air.raw, var.air.z))) %>%
+  prcomp(center = TRUE, scale = TRUE)
+
+# Proportion of variance explained by each rotation
+air.both.pca$rotation
+
+# Calculate proportion of variance explained
+round((air.both.pca$sdev / sum(air.both.pca$sdev)), 2)
+
+# PCLR to check if PC1,2 are good at predicting summerkills
+glm.pcr(as.numeric(df.historical$summerkill), as.matrix(df.historical[,c(var.air.raw, var.air.z)]), k = 2)
+
+# PC1, absolute temp
+# PC2, relative temp
+
+# Separate PC1:2
+air_pca <- df.historical %>%
+  dplyr::select(max_surf,  mean_air,   min_air,
+                max_air_z, mean_air_z, min_air_z) %>%
+  as.matrix() %*% air.both.pca$rotation[, 1:2]
+
+# Add PCA results into monthly water temperature data
+df.historical <- df.historical %>%
+  add_column(air_pc1 = air_pca[,1],
+             air_pc2 = air_pca[,2])
+
+######################################
+# Water (raw and z-score)
+
+# PCA
+water.both.pca <- df.historical %>%
+  dplyr::select(all_of(c(var.water.raw, var.water.z))) %>%
+  prcomp(center = TRUE, scale = TRUE)
+
+# Proportion of variance explained by each rotation
+water.both.pca$rotation
+
+# Calculate proportion of variance explained
+round((water.both.pca$sdev / sum(water.both.pca$sdev)), 2)
+
+# PCLR to check if PC1,2 are good at predicting summerkills
+glm.pcr(as.numeric(df.historical$summerkill), as.matrix(df.historical[,c(var.water.raw, var.water.z)]), k = 3)
+
+# PC1, absolute temp
+# PC2, relative temp
+# PC3, surface / deep difference
+
+# Separate PC1:3
+water_pca <- df.historical %>%
+  dplyr::select(max_surf,   mean_surf,   max_bot,   mean_bot,
+                max_surf_z, mean_surf_z, max_bot_z, mean_bot_z) %>%
+  as.matrix() %*% water.both.pca$rotation[, 1:3]
+
+# Add PCA results into monthly water temperature data
+df.historical <- df.historical %>%
+  add_column(water_pc1 = water_pca[,1],
+             water_pc2 = water_pca[,2],
+             water_pc3 = water_pca[,3])
+
+#######################################
+
+# Change summerkill back to factor
+df.historical <- df.historical %>%
+  mutate(summerkill = as.factor(summerkill)) %>%
+  mutate(summerkill = fct_recode(summerkill),
+                                 "pos" = "1",
+                                 "neg" = "0")
+```
+
+### Step 4: Future (mid) PCAs
+
+```{r echo = `FALSE`}
+# Change summerkill back to numeric for PCAs
+df.future.mid <- df.future %>%
+  filter(year < 2075)
+
+#######################################
+# Air (raw and z-score)
+
+# PCA
+air.both.pca <- df.future.mid %>%
+  dplyr::select(all_of(c(var.air.raw, var.air.z))) %>%
+  prcomp(center = TRUE, scale = TRUE)
+
+# Proportion of variance explained by each rotation
+air.both.pca$rotation
+
+# Calculate proportion of variance explained
+round((air.both.pca$sdev / sum(air.both.pca$sdev)), 2)
+
+# PC1, absolute temp
+# PC2, relative temp
+
+# Separate PC1:2
+air_pca <- df.future.mid %>%
+  dplyr::select(max_surf,  mean_air,   min_air,
+                max_air_z, mean_air_z, min_air_z) %>%
+  as.matrix() %*% air.both.pca$rotation[, 1:2]
+
+# Add PCA results into monthly water temperature data
+df.future.mid <- df.future.mid %>%
+  add_column(air_pc1 = air_pca[,1],
+             air_pc2 = air_pca[,2])
+
+######################################
+# Water (raw and z-score)
+
+# PCA
+water.both.pca <- df.future.mid %>%
+  dplyr::select(all_of(c(var.water.raw, var.water.z))) %>%
+  prcomp(center = TRUE, scale = TRUE)
+
+# Proportion of variance explained by each rotation
+water.both.pca$rotation
+
+# Calculate proportion of variance explained
+round((water.both.pca$sdev / sum(water.both.pca$sdev)), 2)
+
+# PC1, absolute temp
+# PC2, relative temp
+# PC3, surface / deep difference
+
+# Separate PC1:3
+water_pca <- df.future.mid %>%
+  dplyr::select(max_surf,   mean_surf,   max_bot,   mean_bot,
+                max_surf_z, mean_surf_z, max_bot_z, mean_bot_z) %>%
+  as.matrix() %*% water.both.pca$rotation[, 1:3]
+
+# Add PCA results into monthly water temperature data
+df.future.mid <- df.future.mid %>%
+  add_column(water_pc1 = water_pca[,1],
+             water_pc2 = water_pca[,2],
+             water_pc3 = water_pca[,3])
+```
+
+### Step 5: Future (late) PCAs
+
+```{r echo = `FALSE`}
+# Change summerkill back to numeric for PCAs
+df.future.late <- df.future %>%
+  filter(year > 2075)
+
+#######################################
+# Air (raw and z-score)
+
+# PCA
+air.both.pca <- df.future.late %>%
+  dplyr::select(all_of(c(var.air.raw, var.air.z))) %>%
+  prcomp(center = TRUE, scale = TRUE)
+
+# Proportion of variance explained by each rotation
+air.both.pca$rotation
+
+# Calculate proportion of variance explained
+round((air.both.pca$sdev / sum(air.both.pca$sdev)), 2)
+
+# PC1, absolute temp
+# PC2, relative temp
+
+# Separate PC1:2
+air_pca <- df.future.late %>%
+  dplyr::select(max_surf,  mean_air,   min_air,
+                max_air_z, mean_air_z, min_air_z) %>%
+  as.matrix() %*% air.both.pca$rotation[, 1:2]
+
+# Add PCA results into monthly water temperature data
+df.future.late <- df.future.late %>%
+  add_column(air_pc1 = air_pca[,1],
+             air_pc2 = air_pca[,2])
+
+######################################
+# Water (raw and z-score)
+
+# PCA
+water.both.pca <- df.future.late %>%
+  dplyr::select(all_of(c(var.water.raw, var.water.z))) %>%
+  prcomp(center = TRUE, scale = TRUE)
+
+# Proportion of variance explained by each rotation
+water.both.pca$rotation
+
+# Calculate proportion of variance explained
+round((water.both.pca$sdev / sum(water.both.pca$sdev)), 2)
+
+# PC1, absolute temp
+# PC2, relative temp
+# PC3, surface / deep difference
+
+# Separate PC1:3
+water_pca <- df.future.late %>%
+  dplyr::select(max_surf,   mean_surf,   max_bot,   mean_bot,
+                max_surf_z, mean_surf_z, max_bot_z, mean_bot_z) %>%
+  as.matrix() %*% water.both.pca$rotation[, 1:3]
+
+# Add PCA results into monthly water temperature data
+df.future.late <- df.future.late %>%
+  add_column(water_pc1 = water_pca[,1],
+             water_pc2 = water_pca[,2],
+             water_pc3 = water_pca[,3])
+
+# Join updated mid- and late-future datasets
+df.future <- rbind(df.future.mid, df.future.late)
+```
+
+### Step 5: Training and testing sets
+
+Formats and partitions the data into training and testing sets, which are scaled to allow for coefficient comparison.
+
+```{r echo = `FALSE`}
+# Reduce historical dataframe for models
+df.test <- df.historical %>%
+    mutate(
+      year         = as.character(year),
+      month        = as.character(month),
+      season       = as.factor(season),
+      summerkill   = as.factor(summerkill),
+      lat          = as.numeric(lat),
+      long         = as.numeric(long),
+      state        = as.factor(state),
+      population   = as.numeric(population),
+      ice_duration = as.numeric(ice_duration)) %>%
+  dplyr::select(., c(year, month, season, summerkill,
+                     lat, long, state, population,
+                     all_of(var.all),
+                     water_pc1, water_pc2, water_pc3,
+                     air_pc1, air_pc2)) %>%
+  mutate(summerkill = fct_recode(summerkill,
+                                 "pos" = "1",
+                                 "neg" = "0"))
+```
+
+```{r echo = `FALSE`}
 # Set seed
 set.seed(406)
 
 # Creates series of training partitions
-in.training <- createDataPartition(df.historical$summerkill, p = .75, list = FALSE)
+in.training <- createDataPartition(df.test$summerkill, p = .75, list = FALSE)
 
 # Partition training data
-training <- df.historical  %>%
+training <- df.test  %>%
   slice(in.training)
 
 # Partition testing data
-testing <- df.historical %>%
+testing <- df.test %>%
   slice(-in.training)
 
 # Scale data
@@ -117,30 +366,16 @@ training <- predict(pre.proc.values, training) %>%
 # Create testing set
 testing <- predict(pre.proc.values, testing) %>%
   mutate(summerkill = factor(testing$summerkill, 
-                             levels = c("pos", "neg"), 
+                             levels = c("pos", "neg"),
                              ordered = TRUE),
          year = as.integer(year))
 
-# Scale full dataset
-pre.proc.values.full.hist <- preProcess(df.historical, method = c("center", "scale"))
-
-# Predict future
-future <- predict(pre.proc.values.full.hist, test) %>%
-  mutate(year = as.integer(year))
-
-# Change working directory
-setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
-
-# Export datasest
-write_csv(training, "training.csv")
-write_csv(testing,  "testing.csv")
-write_csv(future,   "future.csv")
-
-# Remove dataframes
-rm(df.historical, future,
-   in.training,
-   testing, training,
-   pre.proc.values)
+# Export data
+write_csv(testing,       "models/testing.csv")
+write_csv(training,      "models/training.csv")
+write_csv(df.historical, "processed/df_historical.csv")
+write_csv(df.future,     "processed/df_future.csv")
+write_csv(df.test,       "processed/df_test.csv")
 ```
 
 ######################################

@@ -1,304 +1,173 @@
----
+---`
 title: "figures"
-author: "fishkill friends"
-date: "2020/01/05"
+author: "SPT"
+date: "2021_08_16"
 output: github_document
 ---
 
 ### Step 1: Load packages and data
 
-This is a second pass at data processing to prepare data for model fitting.
+```{r, setup, include = `FALSE`, echo = `FALSE`}
+knitr::opts_knit$set(root.dir = "/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp")
+```
 
-```{r: Load packages and data}
+```{r, echo = `FALSE`}
 # Load packages
 library(tidyverse)
 library(caret)
 library(dplyr)
+library(ggmap)
+library(cowplot)
+library(sp)
+library(spdep)
+library(maddog)
+library(ggsn)
+library(ggpubr)
+library(ggridges)
+library(patchwork)
+library(ggthemes)
+library(ggmap)
+library(gridExtra)
+library(scales)
+library(car)
+library(DescTools)
+library(rgdal)
+library(spData)
+library(fields)
+library(raster)
+library(rasterVis)
+library(fda)
+library(ggplot2)
+library(maps)
+library(MASS)
+library(RColorBrewer)
+library(reshape2)
+library(shiny)
+library(shinythemes)
+library(spData)
+
+theme_set(theme_pubr())
 
 # Reset global environment
 rm(list = ls())
 
 # Change working directory
-setwd("/Users/simontye/Documents/Research/Projects/MME_Temp/2020_MME_Temp/data/processed")
+setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp")
 
-# Load historical data
-#df.historical <- read.csv(file = "df_historical.csv", head = TRUE, sep = ",")
-df.future     <- read.csv(file = "df_future.csv", head = TRUE, sep = ",")
+# Load data
+df.historical <- read_csv("data/processed/df_historical.csv")
+df.test       <- read_csv("data/processed/df_test.csv")
+df.future     <- read_csv("data/processed/df_future.csv")
+df.snow       <- read_csv("data/processed/df_snow.csv")
+thermal       <- read.csv("data/raw/fish_thermal.csv")
+
+## Load final models
+ridge_a1 <- readRDS("data/models/full/full_ridge_a1.rds")
+#ridge_a2 <- readRDS("data/models/full/full_ridge_a2.rds")
+ridge_w1 <- readRDS("data/models/full/full_ridge_w1.rds")
+#ridge_w2 <- readRDS("data/models/full/full_ridge_w2.rds")
+
+# Load probabilities
+prob.hist.a1   <- read.csv("data/processed/ridge_a1_historical.csv")
+prob.hist.w1   <- read.csv("data/processed/ridge_w1_historical.csv")
+prob.future.a1 <- read.csv("data/processed/ridge_a1_future.csv")
+prob.future.w1 <- read.csv("data/processed/ridge_w1_future.csv")
+
+### Load forecasts
+##forecast.water <- read.csv(file = "processed/forecast_water.csv", head = TRUE, sep = ",")
+###forecast.air   <- read.csv(file = "processed/forecast_air.csv", head = TRUE, sep = ",")
 ```
 
-### Step 2: Preliminary figures
+```{r, echo = `FALSE`}
+# Load functions to compute prediction interval via simulation
+compute_quantile <- function(x, q, reps = 1000) {
+  x %>%
+    map_dfc( ~ rbinom(reps, 1, prob = .x)) %>%
+    rowSums() %>%
+    quantile(q)
+}
 
-This creates some basic figures that compare summerkill events with thermal extremes, as well as compare thermal extremes with geographic variables to determine grouping patterns of thermal regimes.
+# Evaluate models
+eval_results <- function(true, predicted, df) {
+  # Calculate metrics
+  SSE      <- sum((predicted - true)^2)
+  SST      <- sum((true - mean(true))^2)
+  R_square <- 1 - SSE / SST
+  RMSE     <- sqrt(SSE/nrow(df))
 
-```{r: Preliminary figures}
-# Create theme
+  # Save metrics
+  data.frame(
+    RMSE    = RMSE,
+    Rsquare = R_square)
+}
+
+# Create figure theme
 pretty <- theme_classic(base_size = 12) +
-  theme(axis.title.y      = element_text(margin = margin(r = 20)),
-        axis.title.x      = element_text(margin = margin(t = 20)), 
+  theme(axis.title.y      = element_text(margin = margin(r = 10)),
+        axis.title.x      = element_text(margin = margin(t = 10)), 
         axis.text         = element_text(color = "black"), 
         axis.ticks        = element_line(color = "black"),
         axis.ticks.length = unit(.25, "cm"), 
         legend.key.size   = unit(1.5,  'lines'),
         legend.position   = "right")
-
-# Subset states
-mn <- subset(df.historical, state == "minnesota")
-wi <- subset(df.historical, state == "wisconsin")
-
-# Subset fishkills
-no  <- subset(df.historical, summerkill == "0")
-yes <- subset(df.historical, summerkill == "1")
-
-# Subset ecoregions
-e.46 <- subset(df.historical, l3_code == "46")
-e.48 <- subset(df.historical, l3_code == "48")
-e.50 <- subset(df.historical, l3_code == "50")
-e.51 <- subset(df.historical, l3_code == "51")
-e.53 <- subset(df.historical, l3_code == "53")
-
-# Max surface water temperature by month
-ggplot() +
-  geom_point(df.future, mapping = aes(x = month, y = max_air, color = season), size = 0.05) +
-  labs(y = "Max surface water temperature (ºC)", x = "Month") +
-  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
-  pretty
-
-# Max bottom water temperature by month
-ggplot() +
-  geom_point(df.future, mapping = aes(x = month, y = max_bot, color = season), size = 0.05) +
-  labs(y = "Max bottom water temperature (ºC)", x = "Month") +
-  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
-  pretty
-
-# Fishkills by maximum surface water and air temperature (colored by presence)
-ggplot() +
-  geom_point(no, mapping = aes(x = max_surf, y = max_air), size = 0.05, color = "lightblue") +
-  geom_point(yes,  mapping = aes(x = max_surf, y = max_air, color = state), size = 2) +
-  labs(y = "Max air temperature (ºC)", x = "Max surface water temperature (ºC)") +
-  pretty
-
-# Fishkills by maximum surface water and air temperature (colored by state)
-ggplot() +
-  geom_point(df.historical, mapping = aes(x = max_surf, y = max_air, color = season), size = 0.05) +
-  labs(y = "Max air temperature (ºC)", x = "Max surface water temperature (ºC)") +
-  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
-  pretty
-
-# Fishkills by maximum surface water and air temperature (colored by season)
-ggplot() +
-  geom_point(no,   mapping = aes(x = max_surf, y = max_air), size = 0.05, color = "lightblue") +
-  geom_point(yes,  mapping = aes(x = max_surf, y = max_air, color = l3_code), size = 2) +
-  labs(y = "Max air temperature (ºC)", x = "Max surface water temperature (ºC)") +
-  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
-  pretty
-
-# Fishkills by maximum surface water and air temperature (colored by month)
-ggplot() +
-  geom_point(e.50, mapping = aes(x = max_surf, y = max_air), size = 0.05, color = "lightblue") +
-  geom_point(e.51, mapping = aes(x = max_surf, y = max_air), size = 0.05, color = "blue") +
-  geom_point(e.53, mapping = aes(x = max_surf, y = max_air), size = 0.05, color = "darkblue") +
-  geom_point(yes,  mapping = aes(x = max_surf, y = max_air), size = 2, color = "darkred") +
-  labs(y = "Max air temperature (ºC)", x = "Max surface water temperature (ºC)") +
-  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
-  pretty
-
-# Maximum surface water and air temperature (colored by season)
-ggplot() +
-  geom_point(df.historical, mapping = aes(x = max_surf, y = max_air, color = season), size = 0.05) +
-  labs(y = "Max air temperature (ºC)", x = "Max surface water temperature (ºC)") +
-  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
-  pretty
-
-# Maximum surface water and air temperature (colored by ecoregion)
-ggplot() +
-  geom_point(e.46, mapping = aes(x = max_surf, y = max_air, color = l3_code), size = 0.02) +
-  labs(y = "Max air temperature (ºC)", x = "Max surface water temperature (ºC)") +
-  guides(colour = guide_legend(override.aes = list(size = 1.5))) +
-  pretty
 ```
 
+### Step 2: Format data
 
-### Step 2: Map of fishkills
+```{r, echo = `FALSE`}
+# Format test df
+df.test <- df.test %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         summerkill   = as.factor(summerkill),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         state        = as.factor(state),
+         population   = as.numeric(population),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         mean_air_z   = as.numeric(mean_air_z),
+         ice_duration = as.numeric(ice_duration))
 
-This creates a preliminary map of fishkill events across Minnesota and Wisconsin to visually verify the waterbody centroid method used above. Specifically, it creates one map with the fishkill event localities and another map with the fishkill event and waterbody localities across both states.
+# Format historical df
+df.historical <- df.historical %>%
+  as.data.frame(.) %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         summerkill   = as.numeric(summerkill),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         state        = as.factor(state),
+         population   = as.numeric(population),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         mean_air_z   = as.numeric(mean_air_z),
+         ice_duration = as.numeric(ice_duration))
 
-```{r: Maps of fishkills}
-# Subsets fishkills for map
-fishkills <- df.historical %>%
-  filter(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
-  mutate(fishkill = ifelse(anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1, 1, 0)) %>%
-  subset(., select = c(lat, long, state))
-
-# Subsets lakes for map
-lakes <- df.historical %>%
-  subset(., select = c(site_id, lat, long, state))
-
-# Creates state boundaries
-states   <- map_data("state")
-states   <- subset(states, region %in% c("minnesota", "wisconsin"))
-
-# Creates county boundaries
-counties <- map_data("county")
-counties <- subset(counties, region %in% c("minnesota", "wisconsin"))
-
-# Map of fishkill events
-ggplot(data = states, mapping = aes(x = long, y = lat, group = group)) + 
-  coord_fixed(1.3) + 
-  geom_polygon(data = counties, aes(x = long, y = lat, alpha = 0.1, group = group),
-               color = "darkgray", fill = "gray", size = 0.5) +
-  geom_polygon(data = states, color = "black", fill = NA, size = 1) +
-  geom_point(data = lakes, aes(x = long, y = lat, group = state),
-             color = "black", fill = "lightblue", size = 1, shape = 21) +
-  #stat_density2d(data = fishkills, aes(x = long, y = lat, fill = ..level.., alpha = ..level.., group = state),
-  #               bins = 30, geom = "polygon") +
-  geom_point(data = fishkills, aes(x = long, y = lat, group = state),
-             color = "black", fill = "red", size = 2, shape = 21) +
-  theme_nothing()
-
-# For animated maps, avoid this rabbit hole.
-#map.animated <- map + transition_states(Year, transition_length = 2, state_length = 2)
-#map.animated
-
-# Map of fishkill events and lake localities across upper midwest
-ggplot(data = states, mapping = aes(x = long, y = lat)) + 
-  coord_fixed(1.3) + 
-  geom_polygon(data = counties, aes(x = long, y = lat, alpha = 0.1), color = "darkgray", fill = "gray", size = 0.5) +
-  geom_polygon(data = states, color = "black", fill = NA, size = 1) +
-  geom_point(data = lakes, aes(x = long, y = lat),
-             color = "black", fill = "lightblue", size = 1, shape = 21) +
-  geom_point(data = fishkills, aes(x = long, y = lat, group = state),
-             color = "black", fill = "red", size = 1, shape = 21) +
-  theme_nothing()
-
-# Remove unnecessary dataframes
-rm(counties, states, fish.map)
+# Format future df
+df.future <- df.future %>%
+  as.data.frame(.) %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         state        = as.factor(state),
+         population   = as.numeric(population),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         mean_air_z   = as.numeric(mean_air_z),
+         ice_duration = as.numeric(ice_duration))
 ```
 
-### Step 3: Fishkill counts
+```{r, echo = `FALSE`}
+######################################
+### Summerkills
 
-```{r: Fishkill counts}
-# Fishkills by state
-fishkills.state <- df.historical %>%
-  group_by(state) %>%
-  dplyr::summarize(anthropogenic = sum(anthropogenic),
-                   infectious    = sum(infectious),
-                   summerkill    = sum(summerkill),
-                   winterkill    = sum(winterkill),
-                   unknown       = sum(unknown),
-                   fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)))
-# Fishkills by ecoregion
-fishkills.ecoregion <- df.historical %>%
-  group_by(l3_code) %>%
-  dplyr::summarize(anthropogenic = sum(anthropogenic),
-                   infectious    = sum(infectious),
-                   summerkill    = sum(summerkill),
-                   winterkill    = sum(winterkill),
-                   unknown       = sum(unknown),
-                   fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)))
-
-# Fishkills by lake
-fishkills.lake <- df.historical %>%
-  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
-  group_by(site_id) %>%
-  summarize(anthropogenic = sum(anthropogenic),
-            infectious    = sum(infectious),
-            summerkill    = sum(summerkill),
-            winterkill    = sum(winterkill),
-            unknown       = sum(unknown),
-            fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)))
-
-# Fishkills by thermal category and state
-fishkills.thermal <- df.historical %>%
-  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
-  reshape2::melt(., id.vars = c("state"),
-                 measure.vars = c("cool_temp", "cold_temp", "warm_temp")) %>%
-  group_by(state, variable) %>%
-  summarize(value = sum(value))
-
-# Fishkills by thermal category, state, and cause
-fishkills.thermal <- df.historical %>%
-  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
-  reshape2::melt(., id.vars = c("state", "anthropogenic", "infectious", "summerkill", "winterkill", "unknown"),
-                 measure.vars = c("cool_temp", "cold_temp", "warm_temp")) %>%
-  group_by(state, variable, anthropogenic, infectious, summerkill, winterkill, unknown) %>%
-  summarize(value = sum(value)) %>%
-  mutate(anthropogenic = ifelse(anthropogenic >= 1, value, 0),
-         infectious    = ifelse(infectious >= 1,    value, 0),
-         summerkill    = ifelse(summerkill >= 1,    value, 0),
-         winterkill    = ifelse(winterkill >= 1,    value, 0),
-         unknown       = ifelse(unknown >= 1,       value, 0),
-         value         = NULL) %>%
-  dplyr::rename(thermal.category = variable) %>%
-  reshape2::melt(., id.vars = c("state", "thermal.category"),
-                 measure.vars = c("anthropogenic", "infectious", "summerkill",
-                                  "winterkill", "unknown")) %>%
-  dplyr::rename(cause = variable,
-                count = value) %>%
-  group_by(state, thermal.category, cause) %>%
-  summarize(count = sum(count))
-
-# Fishkills by family and cause
-fishkills.family <- df.historical %>%
-  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
-  reshape2::melt(., id.vars = c("state", "anthropogenic", "infectious", "summerkill", "winterkill", "unknown"),
-                 measure.vars = c("centrarchidae", "percidae", "esocidae", "ictaluridae",
-                                  "cyprinidae", "salmonidae", "catostomidae", "sciaenidae",
-                                  "osmeridae", "lepisosteidae", "acipenseridae", "amiidae",
-                                  "cottoidae", "gasterosteidae", "gobiidae")) %>%
-  group_by(state, variable, anthropogenic, infectious, summerkill, winterkill, unknown) %>%
-  summarize(value = sum(value)) %>%
-  mutate(anthropogenic = ifelse(anthropogenic >= 1, value, 0),
-         infectious    = ifelse(infectious >= 1,    value, 0),
-         summerkill    = ifelse(summerkill >= 1,    value, 0),
-         winterkill    = ifelse(winterkill >= 1,    value, 0),
-         unknown       = ifelse(unknown >= 1,       value, 0),
-         value         = NULL) %>%
-  dplyr::rename(family = variable) %>%
-  reshape2::melt(., id.vars = c("family"),
-                 measure.vars = c("anthropogenic", "infectious", "summerkill",
-                                  "winterkill", "unknown")) %>%
-  dplyr::rename(cause = variable,
-                count = value) %>%
-  group_by(family, cause) %>%
-  summarize(count = sum(count)) %>%
-  mutate(family = as.character(family),
-         cause = as.character(cause)) %>%
-  .[with(., order(family, cause)), ]
-
-# Percent of fishkills by family and summer
-fishkills.family <- df.historical %>%
-  subset(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
-  reshape2::melt(., id.vars = c("state", "anthropogenic", "infectious", "summerkill", "winterkill", "unknown"),
-                 measure.vars = c("centrarchidae", "percidae", "esocidae", "ictaluridae",
-                                  "cyprinidae", "salmonidae", "catostomidae", "sciaenidae",
-                                  "osmeridae", "lepisosteidae", "acipenseridae", "amiidae",
-                                  "cottoidae", "gasterosteidae", "gobiidae")) %>%
-  group_by(state, variable, anthropogenic, infectious, summerkill, winterkill, unknown) %>%
-  summarize(value = sum(value)) %>%
-  mutate(anthropogenic = ifelse(anthropogenic >= 1, value, 0),
-         infectious    = ifelse(infectious >= 1,    value, 0),
-         summerkill    = ifelse(summerkill >= 1,    value, 0),
-         winterkill    = ifelse(winterkill >= 1,    value, 0),
-         unknown       = ifelse(unknown >= 1,       value, 0),
-         value         = NULL) %>%
-  dplyr::rename(family = variable) %>%
-  reshape2::melt(., id.vars = c("family"),
-                 measure.vars = c("anthropogenic", "infectious", "summerkill",
-                                  "winterkill", "unknown")) %>%
-  dplyr::rename(cause = variable,
-                count = value) %>%
-  group_by(family, cause) %>%
-  summarize(count = sum(count)) %>%
-  mutate(family = as.character(family),
-         cause = as.character(cause)) %>%
-  .[with(., order(family, cause)), ]
-```
-
-### Step 4: Boxplots of major causes ~ thermal z-scores
-
-```{r: Summerkills}
-# Create summerkill dataframe
-summerkills <- df.historical %>%
+# Create boxplot df for raw temps
+boxplot.raw <- df.historical %>%
   filter(month %in% c("6", "7", "8")) %>%
   dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
   dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
@@ -308,46 +177,20 @@ summerkills <- df.historical %>%
                                                              ifelse(unknown == 1, "Unknown", "Summer non-event")))))) %>%
   dplyr::mutate(fishkill       = as.factor(fishkill),
                 fishkill_cause = as.factor(fishkill_cause)) %>%
-  subset(., fishkill_cause == "Summerkill" | fishkill_cause == "Summer non-event") %>%
-  dplyr::select(., c(fishkill_cause,
-                     mean_surf_z, mean_bot_z, mean_air_z,
-                     state, l3_code)) %>%
-  dplyr::rename("Surface water" = mean_surf_z,
-                "Bottom water"  = mean_bot_z,
-                "Air"           = mean_air_z) %>%
+  dplyr::select(., c(fishkill_cause, state,
+                     mean_air, mean_surf, mean_bot)) %>%
+  dplyr::rename("Air"           = mean_air,
+                "Surface water" = mean_surf,
+                "Deep water"    = mean_bot) %>%
   mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
-  reshape2::melt(., id.vars = c("fishkill_cause", "state", "l3_code"),
-                 measure.vars = c("Surface water", "Bottom water", "Air")) %>%
-  dplyr::rename(Temperature = variable,
-                `z-score`   = value)
+  reshape2::melt(., id.vars = c("fishkill_cause", "state"),
+                 measure.vars = c("Air", "Surface water", "Deep water")) %>%
+  dplyr::rename(`Elevation`             = variable,
+                `Mean temperature (ºC)` = value) %>%
+  filter(fishkill_cause != "Winterkill")
 
-# Boxplot for summerkills ~ thermal z-scores
-ggplot() +
-  geom_boxplot(summerkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
-  pretty +
-  labs(x = NULL) +
-  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1"))
-
-# Boxplot for summerkills ~ thermal z-scores by state
-ggplot() +
-  geom_boxplot(summerkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
-  pretty +
-  labs(x = NULL) +
-  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
-  facet_wrap(~ state)
-
-# Boxplot for summerkills ~ thermal z-scores by ecoregion
-#ggplot() +
-#  geom_boxplot(summerkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
-#  pretty +
-#  labs(x = NULL) +
-#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
-#  facet_wrap(~ l3_code)
-```
-
-```{r: Winterkills}
-# Create winterkill dataframe
-winterkills <- df.historical %>%
+# Add winter non-event
+boxplot.raw <- df.historical %>%
   filter(month %in% c("12", "1", "2")) %>%
   dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
   dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
@@ -357,96 +200,130 @@ winterkills <- df.historical %>%
                                                              ifelse(unknown == 1, "Unknown", "Winter non-event")))))) %>%
   dplyr::mutate(fishkill       = as.factor(fishkill),
                 fishkill_cause = as.factor(fishkill_cause)) %>%
-  subset(., fishkill_cause == "Winterkill" | fishkill_cause == "Winter non-event") %>%
-  dplyr::select(., c(fishkill_cause,
-                     mean_surf_z, mean_bot_z, mean_air_z,
-                     state, l3_code)) %>%
-  dplyr::rename("Surface water" = mean_surf_z,
-                "Bottom water"  = mean_bot_z,
-                "Air"           = mean_air_z) %>%
+  dplyr::select(., c(fishkill_cause, state,
+                     mean_air, mean_surf, mean_bot)) %>%
+  dplyr::rename("Air"           = mean_air,
+                "Surface water" = mean_surf,
+                "Deep water"    = mean_bot) %>%
   mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
-  reshape2::melt(., id.vars = c("fishkill_cause", "state", "l3_code"),
-                 measure.vars = c("Surface water", "Bottom water", "Air")) %>%
-  dplyr::rename(Temperature = variable,
-                `z-score`   = value)
+  reshape2::melt(., id.vars = c("fishkill_cause", "state"),
+                 measure.vars = c("Air", "Surface water", "Deep water")) %>%
+  dplyr::rename(`Elevation`             = variable,
+                `Mean temperature (ºC)` = value) %>%
+  filter(fishkill_cause == "Winter non-event" | fishkill_cause == "Winterkill") %>%
+  rbind(boxplot.raw, .)
 
-# Boxplot for winterkills ~ thermal z-scores
-ggplot() +
-  geom_boxplot(winterkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
-  pretty +
-  labs(x = NULL) +
-  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1"))
-
-# Boxplot for winterkills ~ thermal z-scores by state
-ggplot() +
-  geom_boxplot(winterkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
-  pretty +
-  labs(x = NULL) +
-  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
-  facet_wrap(~ state)
-
-# Boxplot for winterkills ~ thermal z-scores by ecoregion
-#ggplot() +
-#  geom_boxplot(winterkills, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
-#  pretty +
-#  labs(x = NULL) +
-#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
-#  facet_wrap(~ l3_code)
-```
-
-```{r: Infectious}
-# Create infectious dataframe
-infectious <- df.historical %>%
+# Create boxplot df for raw temps
+boxplot.z <- df.historical %>%
   filter(month %in% c("6", "7", "8")) %>%
   dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
   dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
                                         ifelse(infectious == 1, "Infectious",
                                                ifelse(summerkill == 1, "Summerkill",
                                                       ifelse(winterkill == 1, "Winterkill",
-                                                             ifelse(unknown == 1, "Unknown", "Infectious non-event")))))) %>%
+                                                             ifelse(unknown == 1, "Unknown", "Summer non-event")))))) %>%
   dplyr::mutate(fishkill       = as.factor(fishkill),
                 fishkill_cause = as.factor(fishkill_cause)) %>%
-  subset(., fishkill_cause == "Infectious" | fishkill_cause == "Infectious non-event") %>%
-  dplyr::select(., c(fishkill_cause,
-                     mean_surf_z, mean_bot_z, mean_air_z,
-                     state, l3_code)) %>%
-  dplyr::rename("Surface water" = mean_surf_z,
-                "Bottom water"  = mean_bot_z,
-                "Air"           = mean_air_z) %>%
+  dplyr::select(., c(fishkill_cause, state,
+                     mean_air_z, mean_surf_z, mean_bot_z)) %>%
+  dplyr::rename("Air"           = mean_air_z,
+                "Surface water" = mean_surf_z,
+                "Deep water"    = mean_bot_z) %>%
   mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
-  reshape2::melt(., id.vars = c("fishkill_cause", "state", "l3_code"),
-                 measure.vars = c("Surface water", "Bottom water", "Air")) %>%
-  dplyr::rename(Temperature = variable,
-                `z-score`   = value)
+  reshape2::melt(., id.vars = c("fishkill_cause", "state"),
+                 measure.vars = c("Air", "Surface water", "Deep water")) %>%
+  dplyr::rename(`Elevation` = variable,
+                `Mean temperature (z-score)`   = value) %>%
+  filter(fishkill_cause != "Winterkill")
 
-# Boxplot for infectious ~ thermal z-scores
-ggplot() +
-  geom_boxplot(infectious, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
-  pretty +
-  labs(x = NULL) +
-  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1"))
+# Add winter non-event
+boxplot.z <- df.historical %>%
+  filter(month %in% c("12", "1", "2")) %>%
+  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
+  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+                                        ifelse(infectious == 1, "Infectious",
+                                               ifelse(summerkill == 1, "Summerkill",
+                                                      ifelse(winterkill == 1, "Winterkill",
+                                                             ifelse(unknown == 1, "Unknown", "Winter non-event")))))) %>%
+  dplyr::mutate(fishkill       = as.factor(fishkill),
+                fishkill_cause = as.factor(fishkill_cause)) %>%
+  dplyr::select(., c(fishkill_cause, state,
+                     mean_air_z, mean_surf_z, mean_bot_z)) %>%
+  dplyr::rename("Air"           = mean_air_z,
+                "Surface water" = mean_surf_z,
+                "Deep water"    = mean_bot_z) %>%
+  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+  reshape2::melt(., id.vars = c("fishkill_cause", "state"),
+                 measure.vars = c("Air", "Surface water", "Deep water")) %>%
+  dplyr::rename(`Elevation` = variable,
+                `Mean temperature (z-score)`   = value) %>%
+  filter(fishkill_cause == "Winter non-event" | fishkill_cause == "Winterkill") %>%
+  rbind(boxplot.z, .)
 
-# Boxplot for infectious ~ thermal z-scores by state
-ggplot() +
-  geom_boxplot(infectious, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
-  pretty +
-  labs(x = NULL) +
-  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
-  facet_wrap(~ state)
 
-# Boxplot for infectious ~ thermal z-scores by ecoregion
-#ggplot() +
-#  geom_boxplot(infectious, mapping = aes(x = fishkill_cause, y = `z-score`, fill = Temperature), outlier.alpha = .3) +
-#  pretty +
-#  labs(x = NULL) +
-#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
-#  facet_wrap(~ l3_code)
-```
+#######################################
+#### Winterkills
+#
+## Create winterkill z-score dataframe
+#winterkills.z <- df.historical %>%
+#  filter(month %in% c("12", "1", "2")) %>%
+#  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | #unknown == 1, 1, 0)) %>%
+#  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+#                                        ifelse(infectious == 1, "Infectious",
+#                                               ifelse(summerkill == 1, "Summerkill",
+#                                                      ifelse(winterkill == 1, "Winterkill",
+#                                                             ifelse(unknown == 1, "Unknown", "Winter #non-event")))))) %>%
+#  dplyr::mutate(fishkill       = as.factor(fishkill),
+#                fishkill_cause = as.factor(fishkill_cause)) %>%
+#  subset(., fishkill_cause == "Winterkill" | fishkill_cause == "Winter non-event") %>%
+#  dplyr::select(., c(fishkill_cause,
+#                     mean_surf_z, mean_bot_z, mean_air_z,
+#                     state)) %>%
+#  dplyr::rename("Surface water" = mean_surf_z,
+#                "Deep water"  = mean_bot_z,
+#                "Air"           = mean_air_z) %>%
+#  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+#  reshape2::melt(., id.vars = c("fishkill_cause", "state"),
+#                 measure.vars = c("Surface water", "Deep water", "Air")) %>%
+#  dplyr::rename(Elevation   = variable,
+#                `z-score`   = value)
+#
+## Reorder levels for winterkills
+#winterkills.z$Elevation      <- factor(winterkills.z$Elevation, levels = c("Air", "Surface water", "Deep water"))
+#winterkills.z$fishkill_cause <- factor(winterkills.z$fishkill_cause, levels = c("Winterkill", "Winter non-event"))
+#
+## Create winterkill raw temp dataframe
+#winterkills.raw <- df.historical %>%
+#  filter(month %in% c("12", "1", "2")) %>%
+#  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | #unknown == 1, 1, 0)) %>%
+#  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+#                                        ifelse(infectious == 1, "Infectious",
+#                                               ifelse(summerkill == 1, "Summerkill",
+#                                                      ifelse(winterkill == 1, "Winterkill",
+#                                                             ifelse(unknown == 1, "Unknown", "Winter #non-event")))))) %>%
+#  dplyr::mutate(fishkill       = as.factor(fishkill),
+#                fishkill_cause = as.factor(fishkill_cause)) %>%
+#  subset(., fishkill_cause == "Winterkill" | fishkill_cause == "Winter non-event") %>%
+#  dplyr::select(., c(fishkill_cause,
+#                     mean_surf, mean_bot, mean_air,
+#                     state)) %>%
+#  dplyr::rename("Surface water" = mean_surf,
+#                "Deep water"  = mean_bot,
+#                "Air"           = mean_air) %>%
+#  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+#  reshape2::melt(., id.vars = c("fishkill_cause", "state"),
+#                 measure.vars = c("Surface water", "Deep water", "Air")) %>%
+#  dplyr::rename(Elevation   = variable,
+#                Temperature = value)
+#
+## Reorder levels for winterkills
+#winterkills.raw$Elevation      <- factor(winterkills.raw$Elevation, levels = c("Air", "Surface water", "Deep #water"))
+#winterkills.raw$fishkill_cause <- factor(winterkills.raw$fishkill_cause, levels = c("Winterkill", "Winter #non-event"))
 
-### Step 5: Boxplots of winterkills ~ ice duration
+######################################
+### Ice duration
 
-```{r: Winterkills}
-# Create winterkill dataframe
+# Create ice duration dataframe
 winterkills.ice <- df.historical %>%
   filter(month %in% c("12", "1", "2")) %>%
   dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
@@ -460,47 +337,78 @@ winterkills.ice <- df.historical %>%
   subset(., fishkill_cause == "Winterkill" | fishkill_cause == "Winter non-event") %>%
   dplyr::select(., c(fishkill_cause,
                      ice_duration,
-                     state, l3_code)) %>%
+                     state)) %>%
   dplyr::rename("Ice duration" = ice_duration) %>%
   mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
-  reshape2::melt(., id.vars = c("fishkill_cause", "state", "l3_code"),
+  reshape2::melt(., id.vars = c("fishkill_cause", "state"),
                  measure.vars = c("Ice duration")) %>%
-  dplyr::rename(#`Ice duration (days)` = variable,
-                `Ice duration (days)`   = value)
+  dplyr::rename(`Ice duration (days)`   = value)
 
-# Boxplot for ice duration ~ thermal z-scores
-ggplot() +
-  geom_boxplot(winterkills.ice,
-               mapping = aes(x = fishkill_cause, y = `Ice duration (days)`, fill = variable), outlier.alpha = .3) +
-  pretty +
-  labs(x = NULL) +
-  scale_fill_manual(values = c("#bdc9e1")) +
-  theme(legend.position = "none")
+# Reorder levels for infectious
+winterkills.ice$fishkill_cause <- factor(winterkills.ice$fishkill_cause, levels = c("Winterkill", "Winter non-event"))
 
-## Boxplot for ice duration ~ thermal z-scores by state
-#ggplot() +
-#  geom_boxplot(winterkills.ice,
-#               mapping = aes(x = fishkill_cause, y = `Ice duration (days)`, fill = variable), outlier.alpha = .3) +
-#  pretty +
-#  labs(x = NULL) +
-#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
-#  facet_wrap(~ state) +
-#  theme(legend.position = "none")
+#######################################
+#### Infectious
+#
+## Create infectious z-score dataframe
+#infectious.z <- df.historical %>%
+#  filter(month %in% c("6", "7", "8")) %>%
+#  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | #unknown == 1, 1, 0)) %>%
+#  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+#                                        ifelse(infectious == 1, "Infectious",
+#                                               ifelse(summerkill == 1, "Summerkill",
+#                                                      ifelse(winterkill == 1, "Winterkill",
+#                                                             ifelse(unknown == 1, "Unknown", "Summer #non-event")))))) %>%
+#  dplyr::mutate(fishkill       = as.factor(fishkill),
+#                fishkill_cause = as.factor(fishkill_cause)) %>%
+#  subset(., fishkill_cause == "Infectious" | fishkill_cause == "Summer non-event") %>%
+#  dplyr::select(., c(fishkill_cause,
+#                     mean_surf_z, mean_bot_z, mean_air_z,
+#                     state)) %>%
+#  dplyr::rename("Surface water" = mean_surf_z,
+#                "Deep water"  = mean_bot_z,
+#                "Air"           = mean_air_z) %>%
+#  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+#  reshape2::melt(., id.vars = c("fishkill_cause", "state"),
+#                 measure.vars = c("Surface water", "Deep water", "Air")) %>%
+#  dplyr::rename(Elevation   = variable,
+#                `z-score`   = value)
+#
+## Reorder levels for infectious
+#infectious.z$Elevation      <- factor(infectious.z$Elevation, levels = c("Air", "Surface water", "Deep water"))
+#infectious.z$fishkill_cause <- factor(infectious.z$fishkill_cause, levels = c("Infectious", "Summer non-event"))
+#
+## Create infectious raw temp dataframe
+#infectious.raw <- df.historical %>%
+#  filter(month %in% c("6", "7", "8")) %>%
+#  dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | #unknown == 1, 1, 0)) %>%
+#  dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+#                                        ifelse(infectious == 1, "Infectious",
+#                                               ifelse(summerkill == 1, "Summerkill",
+#                                                      ifelse(winterkill == 1, "Winterkill",
+#                                                             ifelse(unknown == 1, "Unknown", "Summer #non-event")))))) %>%
+#  dplyr::mutate(fishkill       = as.factor(fishkill),
+#                fishkill_cause = as.factor(fishkill_cause)) %>%
+#  subset(., fishkill_cause == "Infectious" | fishkill_cause == "Summer non-event") %>%
+#  dplyr::select(., c(fishkill_cause,
+#                     mean_surf, mean_bot, mean_air,
+#                     state)) %>%
+#  dplyr::rename("Surface water" = mean_surf,
+#                "Deep water"  = mean_bot,
+#                "Air"           = mean_air) %>%
+#  mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
+#  reshape2::melt(., id.vars = c("fishkill_cause", "state"),
+#                 measure.vars = c("Surface water", "Deep water", "Air")) %>%
+#  dplyr::rename(Elevation   = variable,
+#                Temperature = value)
+#
+## Reorder levels for infectious
+#infectious.raw$Elevation      <- factor(infectious.raw$Elevation, levels = c("Air", "Surface water", "Deep #water"))
+#infectious.raw$fishkill_cause <- factor(infectious.raw$fishkill_cause, levels = c("Infectious", "Summer #non-event"))
+#
+#######################################
+### Cause types
 
-# Boxplot for ice duration ~ thermal z-scores by ecoregion
-#ggplot() +
-#  geom_boxplot(winterkills.ice,
-#               mapping = aes(x = fishkill_cause, y = `Ice duration (days)`, fill = variable), outlier.alpha = .3) +
-#  pretty +
-#  labs(x = NULL) +
-#  scale_fill_manual(values = c("#0570b0", "#74a9cf", "#bdc9e1")) +
-#  facet_wrap(~ l3_code) +
-#  theme(legend.position = "none")
-```
-
-### Step 4: Barplots of major causes
-
-```{r: Causes}
 # Create causes dataframe
 causes.state <- df.historical %>%
   dplyr::select(., c("state", "anthropogenic",
@@ -508,25 +416,1634 @@ causes.state <- df.historical %>%
                      "winterkill", "unknown")) %>%
   mutate(state = ifelse(state == "minnesota", "Minnesota", "Wisconsin")) %>%
   group_by(state) %>%
-  summarize(fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)),
-            Anthropogenic = sum(anthropogenic) / fishkills,
-            Infectious    = sum(infectious) / fishkills,
-            Summerkill    = sum(summerkill) / fishkills,
-            Winterkill    = sum(winterkill) / fishkills,
-            Unknown       = sum(unknown) / fishkills) %>%
-  mutate(fishkills = NULL) %>%
+  dplyr::summarize(Anthropogenic = sum(anthropogenic),
+                   Infectious    = sum(infectious),
+                   Summerkill    = sum(summerkill),
+                   Winterkill    = sum(winterkill),
+                   Unknown       = sum(unknown)) %>%
   reshape2::melt(., id.vars = c("state"),
                  measure.vars = c("Anthropogenic", "Infectious",
-                                  "Summerkill", "Winterkill")) %>%
-  dplyr::rename(Cause   = variable,
-                Percent = value)
+                                  "Summerkill", "Winterkill", "Unknown")) %>%
+  dplyr::rename(cause = variable,
+                count = value) %>%
+  group_by(cause) %>%
+  summarize(count = sum(count))
+
+# Subsets lakes for map
+lakes <- df.historical %>%
+  subset(., select = c(lat, long, state)) %>%
+  unique(.)
+
+# Subsets fishkills for map
+fishkills <- df.historical %>%
+  filter(., anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1) %>%
+  mutate(fishkill = ifelse(anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1, 1, 0),
+         fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
+                                        ifelse(infectious == 1, "Infectious",
+                                               ifelse(summerkill == 1, "Summerkill",
+                                                      ifelse(winterkill == 1, "Winterkill",
+                                                             ifelse(unknown == 1, "Unknown", "NA"))))))
+
+# Reorder levels for map legend
+fishkills$fishkill_cause <- factor(fishkills$fishkill_cause,
+                                   levels = c("Anthropogenic", "Infectious", "Summerkill", "Winterkill", "Unknown", "None"))
+```
+
+```{r, echo = `FALSE`}
+# Reformat CTmax data
+thermal <- thermal %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower) %>%
+  mutate(pref_min = as.numeric(pref_min),
+         pref_max = as.numeric(pref_max),
+         crit_min = as.numeric(crit_min),
+         crit_max = as.numeric(crit_max)) %>%
+  dplyr::select(., c("family", "pref_min", "pref_max", "crit_min", "crit_max",)) %>%
+  na.omit(.) %>%
+  group_by(family) %>%
+  dplyr::summarize(pref_min = mean(pref_min),
+                   pref_max = mean(pref_max),
+                   crit_min = mean(crit_min),
+                   crit_max = mean(crit_max))
+
+# Centrarchidae
+thermal.centrarchidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(centrarchidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%
+  mutate(family = as.character("centrarchidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "centrarchidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "centrarchidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "centrarchidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "centrarchidae")])
+
+# Percidae
+thermal.percidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(percidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("percidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "percidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "percidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "percidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "percidae")])
+
+# Esocidae
+thermal.esocidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(esocidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("esocidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "esocidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "esocidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "esocidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "esocidae")])
+
+# Ictaluridae
+thermal.ictaluridae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(ictaluridae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("ictaluridae"),
+         pref_min = thermal$pref_min[which(thermal$family == "ictaluridae")],
+         pref_max = thermal$pref_max[which(thermal$family == "ictaluridae")],
+         crit_min = thermal$crit_min[which(thermal$family == "ictaluridae")],
+         crit_max = thermal$crit_max[which(thermal$family == "ictaluridae")])
+
+# Salmonidae
+thermal.salmonidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(salmonidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("salmonidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "salmonidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "salmonidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "salmonidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "salmonidae")])
+
+# Catostomidae
+thermal.catostomidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(catostomidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("catostomidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "catostomidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "catostomidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "catostomidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "catostomidae")])
+
+# Sciaenidae
+thermal.sciaenidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(sciaenidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("sciaenidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "sciaenidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "sciaenidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "sciaenidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "sciaenidae")])
+
+# Clupeidae
+thermal.clupeidae <- df.historical %>%
+  filter(summerkill >= 1) %>%
+  filter(clupeidae >= 1) %>%
+  dplyr::select(., c("max_surf", "max_surf_z", "mean_surf",
+                     "max_bot", "max_bot_z", "mean_bot",
+                     "max_air", "max_air_z", "mean_air")) %>%  mutate(family = as.character("clupeidae"),
+         pref_min = thermal$pref_min[which(thermal$family == "clupeidae")],
+         pref_max = thermal$pref_max[which(thermal$family == "clupeidae")],
+         crit_min = thermal$crit_min[which(thermal$family == "clupeidae")],
+         crit_max = thermal$crit_max[which(thermal$family == "clupeidae")])
+
+# Join CTmax dataframes
+thermal.families <- thermal.centrarchidae %>%
+  rbind(., thermal.percidae) %>%
+  rbind(., thermal.esocidae) %>%
+  rbind(., thermal.ictaluridae) %>%
+  rbind(., thermal.clupeidae) %>%
+  rbind(., thermal.salmonidae) %>%
+  rbind(., thermal.sciaenidae) %>%
+  rbind(., thermal.catostomidae) %>%
+  # Difference
+  mutate(
+    diff_crit_air    = max_air -  crit_min,
+    diff_crit_surf   = max_surf - crit_min,
+    diff_crit_bot    = max_bot -  crit_min,
+    diff_pref_air    = max_air -  pref_min,
+    diff_pref_surf   = max_surf - pref_min,
+    diff_pref_bot    = max_bot -  pref_min)
+
+# Summarize family data
+thermal.sum <- thermal.families %>%
+  group_by(family) %>%
+  dplyr::summarize(
+    # Lyons et al. 2019
+    pref_min         = pref_min,
+    pref_max         = pref_max,
+    crit_min         = crit_min,
+    crit_max         = crit_max,
+    # Max air
+    max_air_n        = length(max_air),
+    max_air_mean     = mean(max_air),
+    max_air_sd       = sd(max_air),
+    max_air_se       = max_air_sd / sqrt(max_air_n),
+    # Max air (z-score)
+    max_air_z_n      = length(max_air_z),
+    max_air_z_mean   = mean(max_air_z),
+    max_air_z_sd     = sd(max_air_z),
+    max_air_z_se     = max_air_z_sd / sqrt(max_air_z_n),
+    # Max surface water
+    max_surf_n       = length(max_surf),
+    max_surf_mean    = mean(max_surf),
+    max_surf_sd      = sd(max_surf),
+    max_surf_se      = max_surf_sd / sqrt(max_surf_n),
+    # Max surface water (z-score)
+    max_surf_z_n     = length(max_surf_z),
+    max_surf_z_mean  = mean(max_surf_z),
+    max_surf_z_sd    = sd(max_surf_z),
+    max_surf_z_se    = max_surf_z_sd / sqrt(max_surf_z_n),
+    # Max bottom water
+    max_bot_n        = length(max_bot),
+    max_bot_mean     = mean(max_bot),
+    max_bot_sd       = sd(max_bot),
+    max_bot_se       = max_bot_sd / sqrt(max_bot_n),
+    # Max bottom water (z-score)
+    max_bot_z_n      = length(max_bot_z),
+    max_bot_z_mean   = mean(max_bot_z),
+    max_bot_z_sd     = sd(max_bot_z),
+    max_bot_z_se     = max_bot_z_sd / sqrt(max_bot_z_n)) %>%
+  distinct(.)
+```
+
+```{r, echo = `FALSE`}
+## Add historical date
+#df.historical$date <- strftime(strptime(paste0("15", "/",
+#                               str_pad(df.historical$month, 2, pad = "0"),
+#                               "/", df.historical$year),"%d/%m/%Y"),"%d/%m/%Y")
+#
+## Add future date
+#df.future$date <- strftime(strptime(paste0("15", "/",
+#                           str_pad(df.future$month, 2, pad = "0"),
+#                           "/", df.future$year),"%d/%m/%Y"),"%d/%m/%Y")
+#
+## Reformat for Shiny app
+#hist.thermal.regime <- df.historical %>%
+#  group_by(lat, long, date, year) %>%
+#  dplyr::summarize(mean_surf = mean(mean_surf)) %>%
+#  distinct(.) %>%
+#  ungroup(.)
+#
+## Future thermal regime
+#future.thermal.regime <- df.future %>%
+#  group_by(lat, long, date, year) %>%
+#  dplyr::summarize(mean_surf = mean(mean_surf)) %>%
+#  distinct(.) %>%
+#  ungroup()
+#
+### Future thermal regime
+#thermal.regime <- hist.thermal.regime %>%
+#  full_join(., future.thermal.regime) %>%
+#  group_by(lat, long) %>%
+#  mutate(id = cur_group_id()) %>%
+#  ungroup(.)
+#
+## Early 21st
+#thermal.regime.1 <- thermal.regime %>%
+#  filter(year < 2020) %>%
+#  dplyr::select(., c("date", "id", "mean_surf")) %>%
+#  spread(key = c("id"), value = c("mean_surf"))
+#
+## Mid 21st
+#thermal.regime.2 <- thermal.regime %>%
+#  filter(year > 2020) %>%
+#  filter(year < 2075) %>%
+#  dplyr::select(., c("date", "id", "mean_surf")) %>%
+#  spread(key = c("id"), value = c("mean_surf"))
+#
+## Late 21st
+#thermal.regime.3 <- thermal.regime %>%
+#  filter(year > 2075) %>%
+#  dplyr::select(., c("date", "id", "mean_surf")) %>%
+#  spread(key = c("id"), value = c("mean_surf"))
+```
+
+### Fig 1. Map of fishkills
+
+```{r, setup, include = `FALSE`, echo = `FALSE`}
+knitr::opts_knit$set(root.dir = "/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/figures")
+```
+
+```{r, plot, echo = `FALSE`}
+# Create state boundaries
+states <- map_data("state") %>%
+  subset(., region %in% c("minnesota", "wisconsin"))
+
+# Create county boundaries
+counties <- map_data("county") %>%
+  subset(., region %in% c("minnesota", "wisconsin"))
+
+# Start figure
+pdf("figures/fig_1a_map.pdf", width = 6, height = 6) 
+
+# Map of fishkill events (manually moved legend, arrow, and scale bar in Illustrator)
+ggplot(data = states, mapping = aes(x = long, y = lat, group = group)) + 
+  coord_fixed(1.3) + 
+  geom_polygon(data = counties, aes(x = long, y = lat, group = group),
+               alpha = 0.1, color = "darkgray", size = 0.5) +
+  geom_polygon(data = states, color = "darkgray", fill = NA, size = 1.5) +
+  #geom_point(data = lakes, aes(x = long, y = lat, group = state),
+  #           color = "black", fill = "black",
+  #           size = 0.6, shape = 21, stroke = 0) +
+  geom_jitter(data = fishkills, aes(x = long, y = lat, group = state, fill = fishkill_cause),
+             size = 2, shape = 21, stroke = 0.25, color = "black", alpha = 1, stat = "identity") +
+  ggmap::theme_nothing(legend = TRUE) +
+  guides(fill = guide_legend(title = "Cause")) +
+  scale_fill_manual(values = c("#2c7bb6", "#abd9e9", "#d7191c", "#fdae61", "#ffffbf")) +
+  theme_nothing() #+
+  #north(states) +
+  #scalebar(states, dist = 100, st.size = 3, dist_unit = "km", transform = TRUE, model = "WGS84")
+
+# End figure
+dev.off() 
+
+# Create US map
+us <- map_data("state")
+
+# Isolate states of interest
+us.states <- c("minnesota", "wisconsin")
+
+# Start figure
+pdf("figures/fig_1b_map.pdf", width = 7, height = 4) 
+
+# Create US map for inset
+ggplot(us, aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = "lightgray", color = "darkgray") +
+  geom_polygon(fill = "darkgray", data = filter(us, region %in% us.states))
+
+# End figure
+dev.off()
+
+# Start
+pdf("figures/fig_1c_barplot.pdf", width = 8, height = 6) 
 
 # Barplot of causes by state
 ggplot() +
-  geom_bar(causes.state, mapping = aes(x = state, y = Percent, fill = Cause),
-           stat = "identity", position = "dodge") +
-  labs(y = "Percent of fishkils", x = NULL) +
+  geom_bar(causes.state, mapping = aes(x = cause, y = count, fill = cause),
+           color = "black", size = 0.25, stat = "identity", position = position_dodge()) +
+  scale_fill_manual(values = c("#2c7bb6", "#abd9e9", "#d7191c", "#fdae61", "#ffffbf")) +
+  guides(fill = guide_legend(title = "State")) +
+  labs(x ="Cause", y = "Number of fish mortality events") +
+  pretty
+
+# End
+dev.off()
+```
+
+### Fig 2. Boxplots
+
+```{r, format, echo = `FALSE`}
+####################################################################################################
+# Reorder levels
+boxplot.raw$Elevation <- factor(boxplot.raw$Elevation,
+                                levels = c("Deep water", "Surface water", "Air"))
+
+boxplot.z$Elevation   <- factor(boxplot.z$Elevation,
+                                levels = c("Deep water", "Surface water", "Air"))
+
+# Create summer df
+boxplot.raw.summer <- boxplot.raw %>%
+  filter(fishkill_cause != "Winterkill") %>%
+  filter(fishkill_cause != "Winter non-event") %>%
+  filter(fishkill_cause != "Anthropogenic") %>%
+  filter(fishkill_cause != "Unknown")
+
+# Reorder levels
+boxplot.raw.summer$fishkill_cause <- factor(boxplot.raw.summer$fishkill_cause,
+                                            levels = c("Summerkill", "Infectious", "Summer non-event"))
+
+############################################################
+
+# Create summer df
+boxplot.z.summer <- boxplot.z %>%
+  filter(fishkill_cause != "Winterkill") %>%
+  filter(fishkill_cause != "Winter non-event") %>%
+  filter(fishkill_cause != "Anthropogenic") %>%
+  filter(fishkill_cause != "Unknown")
+
+# Reorder levels
+boxplot.z.summer$fishkill_cause <- factor(boxplot.z.summer$fishkill_cause,
+                                          levels = c("Summerkill", "Infectious", "Summer non-event"))
+
+############################################################
+
+# Create winter df
+boxplot.raw.winter <- boxplot.raw %>%
+  filter(fishkill_cause == "Winterkill" | fishkill_cause == "Winter non-event")
+
+# Reorder levels
+boxplot.raw.winter$fishkill_cause <- factor(boxplot.raw.winter$fishkill_cause,
+                                            levels = c("Winterkill", "Winter non-event"))
+
+############################################################
+
+# Create winter df
+boxplot.z.winter <- boxplot.z %>%
+  filter(fishkill_cause == "Winterkill" | fishkill_cause == "Winter non-event")
+
+# Reorder levels
+boxplot.z.winter$fishkill_cause <- factor(boxplot.z.winter$fishkill_cause,
+                                          levels = c("Winterkill", "Winter non-event"))
+```
+
+```{r, plot, echo = `FALSE`}
+# Boxplot of raw summer temps
+plot.summer.raw <- ggplot() +
+  geom_boxplot(boxplot.raw.summer,
+               mapping = aes(x = Elevation, y = `Mean temperature (ºC)`, fill = fishkill_cause),
+               outlier.color = "black", outlier.alpha = 0.02, outlier.size = 0.75) +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#d7191c", "#abd9e9", "lightgray")) +
+  scale_y_continuous(breaks = c(5, 15, 25, 35)) +
+  pretty
+
+# Boxplot of z-score summer temps
+plot.summer.z <- ggplot() +
+  geom_boxplot(boxplot.z.summer,
+               mapping = aes(x = Elevation, y = `Mean temperature (z-score)`, fill = fishkill_cause),
+               outlier.color = "black", outlier.alpha = 0.02, outlier.size = 0.75) +
+  geom_abline(slope = 0, intercept = 0, linetype = "dashed", alpha = 0.7) +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#d7191c", "#abd9e9", "lightgray"),) +
+  scale_y_continuous(breaks = c(-2, 0, 2)) +
+  pretty
+
+# Boxplot of raw winter temps
+plot.winter.raw <- ggplot() +
+  geom_boxplot(boxplot.raw.winter,
+               mapping = aes(x = Elevation, y = `Mean temperature (ºC)`, fill = fishkill_cause),
+               outlier.color = "black", outlier.alpha = 0.02, outlier.size = 0.75) +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#fdae61", "lightgray")) +
+  scale_y_continuous(breaks = c(-20, -10, 0, 10),
+                     limits = c(-20, 10)) +
+  pretty
+    
+# Boxplot of z-score winter temps
+plot.winter.z <- ggplot() +
+  geom_boxplot(boxplot.z.winter,
+               mapping = aes(x = Elevation, y = `Mean temperature (z-score)`, fill = fishkill_cause),
+               outlier.color = "black", outlier.alpha = 0.02, outlier.size = 0.75) +
+  geom_abline(slope = 0, intercept = 0, linetype = "dashed", alpha = 0.7) +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("#fdae61", "lightgray")) +
+  scale_y_continuous(breaks = c(-2, 0, 2)) +
+  pretty
+
+# Save figure
+pdf("figures/fig_2_boxplots.pdf", width = 12, height = 6) 
+
+# Combine summerkill plots
+ggarrange(plot.summer.raw, plot.winter.raw,
+          plot.summer.z, plot.winter.z,
+          labels = c("A", "B", "C", "D"),
+          ncol = 2, nrow = 2)
+
+# End figure
+dev.off() 
+```
+
+### Fig 3. Time-series
+
+```{r, format, echo = `FALSE`}
+# Historical air model
+h.a1 <- glm(summerkill ~ lat + long + season + population +
+            max_air + max_air_z + precip + ice_duration,
+            data   = df.test,
+            family = binomial)
+
+# Historical water model
+h.w1 <- glm(summerkill ~ lat + long + season + population +
+            mean_surf + mean_surf_z + precip + ice_duration,
+            data   = df.test,
+            family = binomial)
+
+summary(h.a1)
+summary(h.w1)
+
+# Air projections
+p.h.a1 <- predict(object  = h.a1, 
+                  newdata = df.test, 
+                  type    = "response")
+
+# Water projections
+p.h.w1 <- predict(object  = h.w1, 
+                  newdata = df.test, 
+                  type    = "response")
+```
+
+```{r, format, echo = `FALSE`}
+# Future air model
+f.a1 <- glm(summerkill ~ lat + long + season + population +
+            max_air + max_air_z + precip,
+            data   = df.test,
+            family = binomial)
+
+# Future water model
+f.w1 <- glm(summerkill ~ lat + long + season + population +
+            mean_surf + mean_surf_z + precip,
+            data   = df.test,
+            family = binomial)
+
+# Future air projections
+p.f.a1 <- predict(object  = f.a1, 
+                  newdata = df.future, 
+                  type    = "response")
+
+# Future water projections
+p.f.w1 <- predict(object  = f.w1, 
+                  newdata = df.future, 
+                  type    = "response")
+```
+
+```{r, format, echo = `FALSE`}
+# Set seed
+set.seed(3492)
+
+# Format historical df
+real.hist <- df.historical %>% 
+  mutate(year = as.numeric(year)) %>%
+  group_by(year) %>%
+  summarize(
+    summerkill = sum(summerkill),
+    # Air
+    max_air    = mean(max_air),
+    max_air_z  = mean(max_air_z),
+    # Water
+    mean_surf   = mean(mean_surf),
+    mean_surf_z = mean(mean_surf_z)) %>%
+  mutate(summerkill_smooth = loess(summerkill ~ year, .)$fitted,
+         summerkill_smooth = loess(summerkill ~ year, .)$fitted)
+
+# Format future df
+p.hist <- df.historical %>%
+  add_column(prob_air   = p.h.a1,
+             prob_water = p.h.w1) %>%
+  mutate(year = as.numeric(year)) %>%
+  group_by(year) %>%
+  summarize(
+    # Air
+    max_air   = mean(max_air),
+    max_air_z = mean(max_air_z),
+    air_kills = sum(prob_air),
+    air_lb    = compute_quantile(prob_air, q = .025, reps = 1000),
+    air_ub    = compute_quantile(prob_air, q = .975, reps = 1000),
+    air_map   = sum(map_int(prob_air, ~rbinom(1, 1, .x))),
+    # Water
+    mean_surf   = mean(mean_surf),
+    mean_surf_z = mean(mean_surf_z),
+    water_kills = sum(prob_water),
+    water_lb    = compute_quantile(prob_water, q = .025, reps = 1000),
+    water_ub    = compute_quantile(prob_water, q = .975, reps = 1000),
+    water_map   = sum(map_int(prob_water, ~rbinom(1, 1, .x))),)
+
+# Format future df
+p.future <- df.future %>%
+  add_column(prob_air   = p.f.a1,
+             prob_water = p.f.w1) %>%
+  mutate(year = as.numeric(year)) %>%
+  group_by(year) %>%
+  summarize(
+    # Air
+    max_air   = mean(max_air),
+    max_air_z = mean(max_air_z),
+    air_kills = sum(prob_air),
+    air_lb    = compute_quantile(prob_air, q = .025, reps = 1000),
+    air_ub    = compute_quantile(prob_air, q = .975, reps = 1000),
+    air_map   = sum(map_int(prob_air, ~rbinom(1, 1, .x))),
+    # Water
+    mean_surf   = mean(mean_surf),
+    mean_surf_z = mean(mean_surf_z),
+    water_kills = sum(prob_water),
+    water_lb    = compute_quantile(prob_water, q = .025, reps = 1000),
+    water_ub    = compute_quantile(prob_water, q = .975, reps = 1000),
+    water_map   = sum(map_int(prob_water, ~rbinom(1, 1, .x))),)
+
+# Historical
+p.time.1 <- p.hist %>%
+  mutate(year = as.numeric(year)) %>%
+  mutate(
+    # Air
+    air_smooth    = loess(air_kills ~ year, .)$fitted,
+    air_lb_smooth = loess(air_lb ~ year, .)$fitted,
+    air_ub_smooth = loess(air_ub ~ year, .)$fitted,
+    # Water
+    water_smooth    = loess(water_kills ~ year, .)$fitted,
+    water_lb_smooth = loess(water_lb ~ year, .)$fitted,
+    water_ub_smooth = loess(water_ub ~ year, .)$fitted)
+
+# Mid 21st
+p.time.2 <- p.future %>%
+  mutate(year = as.numeric(year)) %>%
+  filter(year < 2075) %>%
+  mutate(
+    # Air
+    air_smooth    = loess(air_kills ~ year, .)$fitted,
+    air_lb_smooth = loess(air_lb ~ year, .)$fitted,
+    air_ub_smooth = loess(air_ub ~ year, .)$fitted,
+    # Water
+    water_smooth    = loess(water_kills ~ year, .)$fitted,
+    water_lb_smooth = loess(water_lb ~ year, .)$fitted,
+    water_ub_smooth = loess(water_ub ~ year, .)$fitted)
+
+# Late 21st
+p.time.3 <- p.future %>%
+  mutate(year = as.numeric(year)) %>%
+  filter(year > 2075) %>%
+  mutate(
+    # Air
+    air_smooth    = loess(air_kills ~ year, .)$fitted,
+    air_lb_smooth = loess(air_lb ~ year, .)$fitted,
+    air_ub_smooth = loess(air_ub ~ year, .)$fitted,
+    # Water
+    water_smooth    = loess(water_kills ~ year, .)$fitted,
+    water_lb_smooth = loess(water_lb ~ year, .)$fitted,
+    water_ub_smooth = loess(water_ub ~ year, .)$fitted)
+
+# Summary statistics for documented events
+median(real.hist$summerkill)
+mean(real.hist$summerkill)
+max(real.hist$year) - min(real.hist$year)
+sd(real.hist$summerkill) / sqrt(length(real.hist$summerkill))
+min(real.hist$summerkill)
+max(real.hist$summerkill)
+
+# Summary statistics for prob.1 air
+median(p.time.1$air_kills)
+mean(p.time.1$air_kills)
+length(p.time.1)
+max(p.time.1$year) - min(p.time.1$year)
+sd(p.time.1$air_kills) / sqrt(length(p.time.1$air_kills))
+min(p.time.1$air_kills)
+max(p.time.1$air_kills)
+
+# Summary statistics for prob.1 water
+median(p.time.1$water_kills)
+mean(p.time.1$water_kills)
+length(p.time.1)
+max(p.time.1$year) - min(p.time.1$year)
+sd(p.time.1$water_kills) / sqrt(length(p.time.1$water_kills))
+min(p.time.1$water_kills)
+max(p.time.1$water_kills)
+
+# Summary statistics for prob.2 air
+median(p.time.2$air_kills)
+mean(p.time.2$air_kills)
+length(p.time.2)
+max(p.time.2$year) - min(p.time.2$year)
+sd(p.time.2$air_kills) / sqrt(length(p.time.2$air_kills))
+min(p.time.2$air_kills)
+max(p.time.2$air_kills)
+
+# Summary statistics for prob.2 water
+median(p.time.2$water_kills)
+mean(p.time.2$water_kills)
+length(p.time.2)
+max(p.time.2$year) - min(p.time.2$year)
+sd(p.time.2$water_kills) / sqrt(length(p.time.2$water_kills))
+min(p.time.2$water_kills)
+max(p.time.2$water_kills)
+
+# Summary statistics for prob.3 air
+median(p.time.3$air_kills)
+mean(p.time.3$air_kills)
+length(p.time.3)
+max(p.time.3$year) - min(p.time.3$year)
+sd(p.time.3$air_kills) / sqrt(length(p.time.3$air_kills))
+min(p.time.3$air_kills)
+max(p.time.3$air_kills)
+((median(p.time.3$air_kills)  - median(real.hist$summerkill))  /  (median(real.hist$summerkill)) * 100)
+
+# Summary statistics for prob.3 water
+median(p.time.3$water_kills)
+mean(p.time.3$water_kills)
+length(p.time.3)
+max(p.time.3$year) - min(p.time.3$year)
+sd(p.time.3$water_kills) / sqrt(length(p.time.3$water_kills))
+min(p.time.3$water_kills)
+max(p.time.3$water_kills)
+((median(p.time.3$water_kills)  - median(real.hist$summerkill))  /  (median(real.hist$summerkill)) * 100)
+```
+
+```{r, plot, echo = `FALSE`}
+# Historical
+time.1 <- ggplot() +
+  # Water
+  geom_ribbon(p.time.1, mapping = aes(x = year, ymin = water_lb_smooth, ymax = water_ub_smooth),
+              fill = "#9ecae1", alpha = 0.2) +
+  geom_point(p.time.1, mapping = aes(x = year, y = water_smooth),
+             color = "#9ecae1", alpha = 0.8, size = 1) +
+  geom_line(p.time.1, mapping = aes(x = year, y = water_smooth),
+            color = "#9ecae1") +
+  # Air
+  geom_ribbon(p.time.1, mapping = aes(x = year, ymin = air_lb_smooth, ymax = air_ub_smooth),
+              fill = "indianred2", alpha = 0.2) +
+  geom_point(p.time.1, mapping = aes(x = year, y = air_smooth),
+             color = "indianred2", alpha = 0.8, size = 1) +
+  geom_line(p.time.1, mapping = aes(x = year, y = air_smooth),
+            color = "indianred2") +
+  # Observed
+  geom_point(real.hist, mapping = aes(x = year, y = summerkill),
+             fill = "black", alpha = 0.8, size = 1) +
+  geom_line(real.hist, mapping = aes(x = year, y = summerkill_smooth),
+            color = "black", alpha = 0.8) +
+  # y-axis
+  scale_y_continuous(breaks = c(0, 50, 100, 150, 200, 250, 300),
+                     labels = c("0", "50", "100", "150", "200", "250", "300"),
+                     limits = c(0, 300)) +
+  # x-axis
+  scale_x_continuous(breaks = c(2003, 2008, 2013),
+                     labels = c("2003", "2008", "2013"),
+                     limits = c(2003, 2013)) +
+  # Theme
+  labs(x = "", y = "Summerkills") +
+  pretty
+
+# Mid 21st
+time.2 <- ggplot() +
+  # Water
+  geom_ribbon(p.time.2, mapping = aes(x = year, ymin = water_lb_smooth, ymax = water_ub_smooth),
+              fill = "#9ecae1", alpha = 0.2) +
+  geom_point(p.time.2, mapping = aes(x = year, y = water_smooth),
+             color = "#9ecae1", alpha = 0.8, size = 1) +
+  geom_line(p.time.2, mapping = aes(x = year, y = water_smooth),
+            color = "#9ecae1") +
+  # Air
+  geom_ribbon(p.time.2, mapping = aes(x = year, ymin = air_lb_smooth, ymax = air_ub_smooth),
+              fill = "indianred2", alpha = 0.2) +
+  geom_point(p.time.2, mapping = aes(x = year, y = air_smooth),
+             color = "indianred2", alpha = 0.8, size = 1) +
+  geom_line(p.time.2, mapping = aes(x = year, y = air_smooth),
+            color = "indianred2") +
+  # y-axis
+  scale_y_continuous(breaks = c(0, 50, 100, 150, 200, 250, 300),
+                     labels = c("", "", "", "", "", "", ""),
+                     limits = c(0, 300)) +
+  # x-axis
+  scale_x_continuous(breaks = c(2041, 2047, 2053, 2059),
+                     labels = c("2041", "2047", "2053", "2059"),
+                     limits = c(2041, 2059)) +
+  # Theme
+  labs(x = "Year", y = NULL) +
+  pretty
+
+# Late 21st
+time.3 <- ggplot() +
+  # Water
+  geom_ribbon(p.time.3, mapping = aes(x = year, ymin = water_lb_smooth, ymax = water_ub_smooth),
+              fill = "#9ecae1", alpha = 0.2) +
+  geom_point(p.time.3, mapping = aes(x = year, y = water_smooth),
+             color = "#9ecae1", alpha = 0.8, size = 1) +
+  geom_line(p.time.3, mapping = aes(x = year, y = water_smooth),
+            color = "#9ecae1") +
+  # Air
+  geom_ribbon(p.time.3, mapping = aes(x = year, ymin = air_lb_smooth, ymax = air_ub_smooth),
+              fill = "indianred2", alpha = 0.2) +
+  geom_point(p.time.3, mapping = aes(x = year, y = air_smooth),
+             color = "indianred2", alpha = 0.8, size = 1) +
+  geom_line(p.time.3, mapping = aes(x = year, y = air_smooth),
+            color = "indianred2") +
+  # y-axis
+  scale_y_continuous(breaks = c(0, 50, 100, 150, 200, 250, 300),
+                     labels = c("", "", "", "", "", "", ""),
+                     limits = c(0, 300)) +
+  # x-axis
+  scale_x_continuous(breaks = c(2081, 2087, 2093, 2099),
+                     labels = c("2081", "2087", "2093", "2099"),
+                     limits = c(2081, 2099)) +
+  # Theme
+  labs(x = "", y = NULL) +
+  pretty
+
+# Save figure
+pdf("figures/fig_3_time.pdf", width = 8, height = 6) 
+
+# Combine maps
+ggarrange(time.1, time.2, time.3,
+          labels = c("Early 21st Century", "Mid-21st Century", "Late 21st Century"),
+          ncol = 3, nrow = 1,
+          legend = NULL)
+
+# End figure
+dev.off()
+```
+
+```{r, plot, echo = `FALSE`}
+# Bind probabilities for temperature pane
+p.time <- p.time.1 %>%
+  rbind(p.time.2, p.time.3)
+
+# Air temperature plot
+time.temp.air <- p.time %>%
+  ggplot(aes(x = year, y = 1, fill = max_air)) +
+  geom_tile(na.rm = TRUE) + 
+  scale_fill_distiller(type = "seq", palette = "Reds", 
+                       direction = 1, na.value = "white",
+                       limits = c(9.7, 20.1),
+                       breaks = c(10.0, 12.5, 15.0, 17.5, 20.0),
+                       labels = c("10.0", "12.5", "15.0", "17.5", "20.0")) +
+  labs(fill = "Temperature (ºC)") +
+  theme_void() +
+  guides(fill = guide_colourbar(title.theme = element_text(size = 8),
+                                label.theme = element_text(size = 7),
+                                barwidth = .8,
+                                barheight = 4))
+
+# Water temperature plot
+time.temp.water <- p.time %>%
+  ggplot(aes(x = year, y = 1, fill = mean_surf)) +
+  geom_tile(na.rm = TRUE) + 
+  scale_fill_distiller(type = "seq", palette = "Blues", 
+                       direction = 1, na.value = "white",
+                       limits = c(9.7, 20.1),
+                       breaks = c(10.0, 12.5, 15.0, 17.5, 20.0),
+                       labels = c("10.0", "12.5", "15.0", "17.5", "20.0")) +
+  labs(fill = "Temperature (ºC)") +
+  theme_void() +
+  guides(fill = guide_colourbar(title.theme = element_text(size = 8),
+                                label.theme = element_text(size = 7),
+                                barwidth = .8,
+                                barheight = 4))
+
+# Save figure
+pdf("figures/fig_3_temp.pdf", width = 6, height = 3) 
+
+# Combine maps
+ggarrange(time.temp.air, time.temp.water,
+          ncol = 1, nrow = 2,
+          legend = NULL)
+
+# End figure
+dev.off()
+```
+
+### Fig 4a. Map of predictions
+
+```{r, format, echo = `FALSE`}
+# Air: early 21st
+prob.1 <- df.historical %>%
+  # Add probabilities
+  mutate(prob_air      = prob.hist.a1$prob,
+         prob_water    = prob.hist.w1$prob) %>%
+  mutate(prob_no_air   = 1 - prob_air,
+         prob_no_water = 1 - prob_water,
+         generation    = "Early 21st Century") %>%
+  group_by(lat, long) %>%
+  summarise(prob_air   = (1 - prod(prob_no_air)),
+            prob_water = (1 - prod(prob_no_water)),
+            long       = mean(long), 
+            lat        = mean(lat))
+
+# Air: mid 21st
+prob.2 <- df.future %>%
+  # Add probabilities
+  mutate(prob_air      = prob.future.a1$prob,
+         prob_water    = prob.future.w1$prob) %>%
+  mutate(prob_no_air   = 1 - prob_air,
+         prob_no_water = 1 - prob_water,
+         generation    = "Mid-21st Century") %>%
+  # Filter years
+  filter(year < 2075) %>%
+  group_by(lat, long) %>%
+  summarise(prob_air   = (1 - prod(prob_no_air)),
+            prob_water = (1 - prod(prob_no_water)),
+            long       = mean(long), 
+            lat        = mean(lat))
+
+# Air: late 21st
+prob.3 <- df.future %>%
+  # Add probabilities
+  mutate(prob_air      = prob.future.a1$prob,
+         prob_water    = prob.future.w1$prob) %>%
+  mutate(prob_no_air   = 1 - prob_air,
+         prob_no_water = 1 - prob_water,
+         generation    = "Mid-21st Century") %>%
+  # Filter years
+  filter(year > 2075) %>%
+  group_by(lat, long) %>%
+  summarise(prob_air   = (1 - prod(prob_no_air)),
+            prob_water = (1 - prod(prob_no_water)),
+            long       = mean(long), 
+            lat        = mean(lat))
+
+# Join all probabilities and calculate differences
+prob.all <- prob.1 %>%
+  dplyr::rename(prob_air_1   = prob_air,
+                prob_water_1 = prob_water) %>%
+  left_join(., prob.2) %>%
+  dplyr::rename(prob_air_2   = prob_air,
+                prob_water_2 = prob_water) %>%
+  left_join(., prob.3) %>%
+  dplyr::rename(prob_air_3   = prob_air,
+                prob_water_3 = prob_water) %>%
+  mutate(prob_diff_1     = prob_air_1 - prob_water_1,
+         prob_diff_2     = prob_air_2 - prob_water_2,
+         prob_diff_3     = prob_air_3 - prob_water_3,
+         prob_diff_air   = prob_air_3 - prob_air_1,
+         prob_diff_water = prob_water_3 - prob_water_1)
+
+# Load states
+data(us_states)
+
+# Subset states
+us_states <- us_states %>%
+  subset(., NAME %in% c("Minnesota", "Wisconsin"))
+
+# Blank raster
+blank <- raster(xmn = -97.5,
+                xmx = -86.5,
+                ymn = 42,
+                ymx = 50,
+                #res = 1000,
+                vals = 0,
+                nrow = 1000,
+                ncol = 1000)
+```
+
+```{r, format, echo = `FALSE`}
+# TPS for air 1
+tps.air.1 <- fields::Tps(x = prob.1[, c("long", "lat")],
+                         Y = prob.1$prob_air)
+
+# Mask for air 1
+df.air.1 <- tps.air.1 %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# TPS for air 2
+tps.air.2 <- fields::Tps(x = prob.2[, c("long", "lat")],
+                         Y = prob.2$prob_air)
+
+# Mask for air 2
+df.air.2 <- tps.air.2 %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# TPS for air 3
+tps.air.3 <- fields::Tps(x = prob.3[, c("long", "lat")],
+                         Y = prob.3$prob_air)
+
+# Mask for air 3
+df.air.3 <- tps.air.3 %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# TPS for water 1
+tps.water.1 <- fields::Tps(x = prob.1[, c("long", "lat")],
+                         Y = prob.1$prob_water)
+
+# Mask for water 1
+df.water.1 <- tps.water.1 %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# TPS for water 2
+tps.water.2 <- fields::Tps(x = prob.2[, c("long", "lat")],
+                         Y = prob.2$prob_water)
+
+# Mask for water 2
+df.water.2 <- tps.water.2 %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# TPS for water 3
+tps.water.3 <- fields::Tps(x = prob.3[, c("long", "lat")],
+                         Y = prob.3$prob_water)
+
+# Mask for water 3
+df.water.3 <- tps.water.3 %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+```
+
+```{r, format, echo = `FALSE`}
+# TPS for diff 1
+tps.diff.1 <- fields::Tps(x = prob.all[, c("long", "lat")],
+                          Y = prob.all$prob_diff_1)
+
+# Mask for diff 1
+df.diff.1 <- tps.diff.1 %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# TPS for diff 2
+tps.diff.2 <- fields::Tps(x = prob.all[, c("long", "lat")],
+                          Y = prob.all$prob_diff_2)
+
+# Mask for diff 2
+df.diff.2 <- tps.diff.2 %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# TPS for diff 3
+tps.diff.3 <- fields::Tps(x = prob.all[, c("long", "lat")],
+                          Y = prob.all$prob_diff_3)
+
+# Mask for diff 3
+df.diff.3 <- tps.diff.3 %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# TPS for all water difference
+tps.water <- fields::Tps(x = prob.all[, c("long", "lat")],
+                         Y = prob.all$prob_diff_water)
+
+# Mask for all water difference
+df.water <- tps.water %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# TPS for all air difference
+tps.air <- fields::Tps(x = prob.all[, c("long", "lat")],
+                       Y = prob.all$prob_diff_air)
+
+# Mask for all air difference
+df.air <- tps.air %>%
+  raster::interpolate(object = blank, model = .) %>%
+  mask(., us_states) %>%
+  raster::as.data.frame(., xy = TRUE) %>%
+  na.omit(.)
+
+# Create state boundaries
+states <- map_data("state") %>%
+  subset(., region %in% c("minnesota", "wisconsin"))
+
+# Create county boundaries
+counties <- map_data("county") %>%
+  subset(., region %in% c("minnesota", "wisconsin"))
+```
+
+```{r, plot, echo = `FALSE`}
+# Min value for gradients
+min(df.air.1$layer, df.air.2$layer, df.air.3$layer)
+# -0.02548787
+
+# Max value for gradients
+max(df.air.1$layer, df.air.2$layer, df.air.3$layer)
+# 0.5236564
+
+# Plot of air 1
+plot.air.1 <- ggplot() +
+  geom_raster(df.air.1,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  geom_point(filter(fishkills, summerkill >= 1),
+             mapping = aes(x = long, y = lat),
+             size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.04, 0.60),
+                       colors = c("lightblue", "white",
+                                  "lightgoldenrod1", "lightgoldenrod2", "gold2",
+                                  "orange1", "sandybrown", "orange2",
+                                  "tomato1", "tomato2", "tomato3",
+                                  "firebrick3", "firebrick4", "darkred"),
+                       breaks   = c(0, 0.2, 0.4, 0.6),
+                       labels   = c("0", "0.2", "0.4", "0.6"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+
+# Plot of air 2
+plot.air.2 <- ggplot() +
+  geom_raster(df.air.2,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  #geom_point(filter(fishkills, summerkill >= 1),
+  #           mapping = aes(x = long, y = lat),
+  #           size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.04, 0.60),
+                       colors = c("lightblue", "white",
+                                  "lightgoldenrod1", "lightgoldenrod2", "gold2",
+                                  "orange1", "sandybrown", "orange2",
+                                  "tomato1", "tomato2", "tomato3",
+                                  "firebrick3", "firebrick4", "darkred"),
+                       breaks   = c(0, 0.2, 0.4, 0.6),
+                       labels   = c("0", "0.2", "0.4", "0.6"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+
+# Plot of air 3
+plot.air.3 <- ggplot() +
+  geom_raster(df.air.3,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  #geom_point(filter(fishkills, summerkill >= 1),
+  #           mapping = aes(x = long, y = lat),
+  #           size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.04, 0.60),
+                       colors = c("lightblue", "white",
+                                  "lightgoldenrod1", "lightgoldenrod2", "gold2",
+                                  "orange1", "sandybrown", "orange2",
+                                  "tomato1", "tomato2", "tomato3",
+                                  "firebrick3", "firebrick4", "darkred"),
+                       breaks   = c(0, 0.2, 0.4, 0.6),
+                       labels   = c("0", "0.2", "0.4", "0.6"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+```
+
+```{r, plot, echo = `FALSE`}
+# Min value for gradients
+min(df.water.1$layer, df.water.2$layer, df.water.3$layer)
+# -0.03810975
+
+# Max value for gradients
+max(df.water.1$layer, df.water.2$layer, df.water.3$layer)
+# 0.5567775
+
+# Plot of water 1
+plot.water.1 <- ggplot() +
+  geom_raster(df.water.1,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  geom_point(filter(fishkills, summerkill >= 1),
+             mapping = aes(x = long, y = lat),
+             size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.04, 0.60),
+                       colors = c("lightblue", "white",
+                                  "lightgoldenrod1", "lightgoldenrod2", "gold2",
+                                  "orange1", "sandybrown", "orange2",
+                                  "tomato1", "tomato2", "tomato3",
+                                  "firebrick3", "firebrick4", "darkred"),
+                       breaks   = c(0, 0.2, 0.4, 0.6),
+                       labels   = c("0", "0.2", "0.4", "0.6"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+
+# Plot of water 2
+plot.water.2 <- ggplot() +
+  geom_raster(df.water.2,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  #geom_point(filter(fishkills, summerkill >= 1),
+  #           mapping = aes(x = long, y = lat),
+  #           size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.03, 0.60),
+                       colors = c("lightblue", "white",
+                                  "lightgoldenrod1", "lightgoldenrod2", "gold2",
+                                  "orange1", "sandybrown", "orange2",
+                                  "tomato1", "tomato2", "tomato3",
+                                  "firebrick3", "firebrick4", "darkred"),
+                       breaks   = c(0, 0.2, 0.4, 0.6),
+                       labels   = c("0", "0.2", "0.4", "0.6"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+
+# Plot of water 3
+plot.water.3 <- ggplot() +
+  geom_raster(df.water.3,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  #geom_point(filter(fishkills, summerkill >= 1),
+  #           mapping = aes(x = long, y = lat),
+  #           size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.03, 0.60),
+                       colors = c("lightblue", "white",
+                                  "lightgoldenrod1", "lightgoldenrod2", "gold2",
+                                  "orange1", "sandybrown", "orange2",
+                                  "tomato1", "tomato2", "tomato3",
+                                  "firebrick3", "firebrick4", "darkred"),
+                       breaks   = c(0, 0.2, 0.4, 0.6),
+                       labels   = c("0", "0.2", "0.4", "0.6"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+```
+
+```{r, plot, echo = `FALSE`}
+# Min value for gradients
+min(df.diff.1$layer, df.diff.2$layer, df.diff.3$layer)
+# -0.1564006
+
+# Max value for gradients
+max(df.diff.1$layer, df.diff.2$layer, df.diff.3$layer)
+# 0.02486807
+
+# Plot of diff.1
+plot.diff.1 <- ggplot() +
+  geom_raster(df.diff.1,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  geom_point(filter(fishkills, summerkill >= 1),
+             mapping = aes(x = long, y = lat),
+             size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.16, 0.08),
+                       colors = c("lightblue4", "lightblue3", "lightblue2", "lightblue1",
+                                  "white", "firebrick1", "firebrick4"),
+                       breaks   = c(-0.16, -0.08, 0, 0.08),
+                       labels   = c("0.16", "0.08", "0", "0.08"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+
+# Plot of diff.2
+plot.diff.2 <- ggplot() +
+  geom_raster(df.diff.2,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  #geom_point(filter(fishkills, summerkill >= 1),
+  #           mapping = aes(x = long, y = lat),
+  #           size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.16, 0.08),
+                       colors = c("lightblue4", "lightblue3", "lightblue2", "lightblue1",
+                                  "white", "firebrick1", "firebrick4"),
+                       breaks   = c(-0.16, -0.08, 0, 0.08),
+                       labels   = c("0.16", "0.08", "0", "0.08"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+
+# Plot of diff.3
+plot.diff.3 <- ggplot() +
+  geom_raster(df.diff.3,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  #geom_point(filter(fishkills, summerkill >= 1),
+  #           mapping = aes(x = long, y = lat),
+  #           size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.16, 0.08),
+                       colors = c("lightblue4", "lightblue3", "lightblue2", "lightblue1",
+                                  "white", "firebrick1", "firebrick4"),
+                       breaks   = c(-0.16, -0.08, 0, 0.08),
+                       labels   = c("0.16", "0.08", "0", "0.08"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+```
+
+```{r, plot, echo = `FALSE`}
+# Min value for gradients
+min(df.air$layer, df.water$layer)
+# -0.1922576
+
+# Max value for gradients
+max(df.air$layer, df.water$layer)
+# 0.3604212
+
+# Plot of air difference
+plot.air <- ggplot() +
+  geom_raster(df.air,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  geom_point(filter(fishkills, summerkill >= 1),
+             mapping = aes(x = long, y = lat),
+             size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.2, 0.4),
+                       colors = c("lightblue4", "lightblue3", "lightblue2", "lightblue1",
+                                  "lightcyan", "white",
+                                  "lightgoldenrod1", "lightgoldenrod2",
+                                  "orange1", "orange", "orange2",
+                                  "tomato1", "tomato2", 
+                                  "firebrick3", "firebrick", "firebrick4"),
+                       breaks   = c(-0.2, 0, 0.2, 0.4),
+                       labels   = c("-0.2", "0", "0.2", "0.4"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+                       
+# Plot of water difference
+plot.water <- ggplot() +
+  geom_raster(df.water,
+              mapping = aes(x = x, y = y, fill = layer)) +
+  geom_point(lakes,
+             mapping = aes(x = long, y = lat, group = state),
+             fill = "black", size = 0.5, alpha = 0.6, shape = 21, stroke = 0) +
+  labs(x = NULL, y = NULL) +
+  geom_polygon(states, mapping = aes(x = long, y = lat, group = group),
+               fill = NA, size = 0.7, color = "black") +
+  geom_point(filter(fishkills, summerkill >= 1),
+             mapping = aes(x = long, y = lat),
+             size = 1, shape = 21, stroke = 0.25, color = "black", fill = "red") +
+  scale_y_continuous(breaks = c(43, 45, 47, 49)) +
+  scale_fill_gradientn(limits = c(-0.2, 0.4),
+                       colors = c("lightblue4", "lightblue3", "lightblue2", "lightblue1",
+                                  "lightcyan", "white",
+                                  "lightgoldenrod1", "lightgoldenrod2",
+                                  "orange1", "orange", "orange2",
+                                  "tomato1", "tomato2", 
+                                  "firebrick3", "firebrick", "firebrick4"),
+                       breaks   = c(-0.2, 0, 0.2, 0.4),
+                       labels   = c("-0.2", "0", "0.2", "0.4"),
+                       name = "Probability") +
+  pretty #+
+  #theme(legend.position = "none")
+```
+
+```{r, plot, echo = `FALSE`}
+# Save figure
+pdf("figures/fig_4_map.pdf", width = 20, height = 7) 
+
+# Combine maps
+ggarrange(plot.air.1, plot.air.2, plot.air.3, plot.air,
+          plot.water.1, plot.water.2, plot.water.3, plot.water,
+          labels = c("Air (2003-2013)", "Air (2041-2059)", "Air (2081-2099)", "Difference",
+                     "Water (2003-2013)", "Water (2041-2059)", "Water (2081-2099)", "Difference"),
+          ncol = 4, nrow = 2,
+          legend = NULL)
+
+# End figure
+dev.off()
+```
+
+### Fig 5. Critical thermal maximum (CTmax)
+
+```{r, format, echo = `FALSE`}
+# Save colors
+colors <- c("#4575b4", "#74add1", "#abd9e9", "#e0f3f8",
+            "#fee090", "#fdae61", "#f46d43", "#d73027")
+
+# Reorder and capitalize levels for summerkills
+thermal.families$family <- factor(thermal.families$family,
+                                  levels = c("salmonidae", "esocidae", "catostomidae",
+                                             "percidae", "clupeidae", "sciaenidae",
+                                             "centrarchidae", "ictaluridae"),
+                                  labels = c("Salmonidae", "Esocidae", "Catostomidae",
+                                             "Percidae", "Clupeidae", "Sciaenidae",
+                                             "Centrarchidae", "Ictaluridae"))
+
+# Reorder and capitalize levels for summerkills
+thermal.sum$family <- factor(thermal.sum$family,
+                             levels = c("salmonidae", "esocidae", "catostomidae",
+                                        "percidae", "clupeidae", "sciaenidae",
+                                        "centrarchidae", "ictaluridae"),
+                             labels = c("Salmonidae", "Esocidae", "Catostomidae",
+                                        "Percidae", "Clupeidae", "Sciaenidae",
+                                        "Centrarchidae", "Ictaluridae"))
+```
+
+```{r, plot, echo = `FALSE`}
+# Difference between CTmax and maximum surface temperature
+#thermal.raw <- ggplot() +
+#  #geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+#  geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Salmonidae"))],
+#             color = colors[1], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Esocidae"))],
+#             color = colors[2], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Catostomidae"))],
+#             color = colors[3], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Percidae"))],
+#             color = colors[4], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Clupeidae"))],
+#             color = colors[5], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Sciaenidae"))],
+#             color = colors[6], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Centrarchidae"))],
+#             color = colors[7], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Ictaluridae"))],
+#             color = colors[8], cex = 1, alpha = 0.6) +
+#  geom_point(thermal.families, mapping = aes(x = crit_min, y = diff_crit_surf, fill = family),
+#             size = 3.25, alpha = 0.6, shape = 21, color = "black",
+#             position = position_jitter(width = 0.05)) +
+#  #geom_point(thermal.families, mapping = aes(x = crit_min, y = max_bot, fill = family),
+#  #           size = 3.25, alpha = 0.5, shape = 25, color = "black") +
+#  scale_fill_manual(values = colors) +
+#  labs(x = "CTmax", y = "Difference between maximum surface water temperature \n and critical thermal maximum (CTmax, ºC)") +
+#  scale_y_continuous(breaks = c(-20, -15, -10, -5, 0, 5, 10),
+#                     labels = c(-20, -15, -10, -5, 0, 5, 10),
+#                     limits = c(-20, 10)) +
+#  scale_x_continuous(breaks = c(26, 28, 30, 32, 34, 36),
+#                     labels = c(26, 28, 30, 32, 34, 36),
+#                     limits = c(26, 37)) +
+#  pretty +
+#  theme(legend.position = "none")
+
+# Difference between CTmax and maximum surface temperature
+thermal.raw <- ggplot() +
+  # Dashed line
+  geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
+  # Background points
+  geom_point(thermal.families,
+             mapping = aes(x = family, y = diff_crit_surf, fill = family),
+             size = 4, alpha = 0.6, shape = 21, color = "black") +
+  # Boxplots
+  geom_boxplot(thermal.families,
+               mapping = aes(x = family, y = diff_crit_surf, fill = family),
+               alpha = 0.6, outlier.alpha = 1) +
+  # Colors
+  scale_fill_manual(values = colors) +
+  labs(x = NULL, y = "Difference between \n maximum surface water temperature \n and critical thermal maximum (CTmax, ºC)") +
+  scale_y_continuous(breaks = c(-20, -15, -10, -5, 0, 5, 10),
+                     labels = c(-20, -15, -10, -5, 0, 5, 10),
+                     limits = c(-20, 10)) +
   pretty +
-  theme(axis.title.y = element_text(margin = margin(r = 20))) +
-  scale_fill_manual(values = c("#d7191c", "#fdae61", "#abd9e9", "#2c7bb6"))
+  theme(legend.position = "none")
+
+## z-score of maximum surface water temperature
+#thermal.z <- ggplot() +
+#  geom_hline(yintercept = 0, linetype = "dashed") +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Salmonidae"))],
+#             color = colors[1], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Esocidae"))],
+#             color = colors[2], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Catostomidae"))],
+#             color = colors[3], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Percidae"))],
+#             color = colors[4], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Clupeidae"))],
+#             color = colors[5], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Sciaenidae"))],
+#             color = colors[6], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Centrarchidae"))],
+#             color = colors[7], cex = 1, alpha = 0.6) +
+#  geom_vline(xintercept = thermal.families$crit_min[(which(thermal.families$family == "Ictaluridae"))],
+#             color = colors[8], cex = 1, alpha = 0.6) +
+#  geom_point(thermal.families, mapping = aes(x = crit_min, y = max_surf_z, fill = family),
+#             size = 3.25, alpha = 0.6, shape = 21, color = "black",
+#             position = position_jitter(width = 0.05)) +
+#  #geom_point(thermal.families, mapping = aes(x = crit_min, y = max_bot_z, fill = family),
+#  #           size = 3.25, alpha = 0.5, shape = 25, color = "black") +
+#  scale_fill_manual(values = colors) +
+#  labs(x = "CTmax", y = "Maximum surface water temperature (z-score)") +
+#  scale_y_continuous(breaks = c(-2, -1, 0, 1, 2),
+#                     labels = c(-2, -1, 0, 1, 2),
+#                     limits = c(-2, 2)) +
+#  scale_x_continuous(breaks = c(26, 28, 30, 32, 34, 36),
+#                     labels = c(26, 28, 30, 32, 34, 36),
+#                     limits = c(26, 37)) +
+#  pretty +
+#  theme(legend.position = "none")
+
+# z-score of maximum surface water temperature
+thermal.z <- ggplot() +
+  # Dashed line
+  geom_abline(slope = 0, intercept = 0, linetype = "dashed") +
+  # Background points
+  geom_point(thermal.families,
+             mapping = aes(x = family, y = max_surf_z, fill = family),
+             size = 4, alpha = 0.6, shape = 21, color = "black") +
+  # Boxplots
+  geom_boxplot(thermal.families,
+               mapping = aes(x = family, y = max_surf_z, fill = family),
+               alpha = 0.6, outlier.alpha = 1) +
+  # Colors
+  scale_fill_manual(values = colors) +
+  labs(x = NULL, y = "Maximum surface water temperature (z-score) \n \n") +
+  scale_y_continuous(breaks = c(-1, 0, 1, 2),
+                     labels = c(" -1", "  0", "  1", "  2"),
+                     limits = c(-1.5, 2)) +
+  pretty +
+  theme(legend.position = "none")
+
+# Save figure
+pdf("figures/fig_5_thermal.pdf", width = 10, height = 10) 
+
+# Combine summerkill and winterkill plots
+ggarrange(thermal.raw, thermal.z,
+          labels = c("A", "B"),
+          ncol = 1, nrow = 2,
+          legend = NULL)
+
+# End figure
+dev.off()
+```
+
+########################################################################
+
+### Fig S2. Winterkills and ice duration
+
+```{r, plot, echo = `FALSE`}
+# Save figure
+pdf("figures/fig_X_ice.pdf", width = 6, height = 4) 
+
+# Boxplot for winterkills ~ ice duration
+#winter.ice <-
+ggplot() +
+  geom_boxplot(winterkills.ice,
+               mapping = aes(x = fishkill_cause, y = `Ice duration (days)`, fill = variable),
+               outlier.alpha = .3) +
+  labs(x = NULL) +
+  scale_fill_manual(values = c("lightblue2")) +
+  pretty +
+  theme(legend.position = "none")
+
+# End figure
+dev.off() 
+```
+
+### Fig. S3: Model differences
+
+```{r, plot, echo = `FALSE`}
+# Save figure
+pdf("figures/fig_S3_map_diff.pdf", width = 15, height = 3.5) 
+
+# Combine maps
+ggarrange(plot.diff.1, plot.diff.2, plot.diff.3,
+          labels = c("Difference (2003-2013)", "Difference (2041-2059)", "Difference (2081-2099)"),
+          ncol = 3, nrow = 1,
+          legend = NULL)
+
+# End figure
+dev.off()
+```
+
+### Notes
+
+```{r, echo = `FALSE`}
+# Save figure
+pdf("fig_s6_map.pdf", width = 6, height = 6) 
+
+# Combine maps
+ggarrange(plot.diff.1,plot.diff.2, plot.diff.3, plot.diff.time.all,
+          labels = c("Early 21st Century", "Mid-21st Century", "Late 21st Century",
+                     "Total Difference"),
+          ncol = 4, nrow = 1,
+          legend = NULL)
+
+# End figure
+dev.off()
+
+# Save figure
+pdf("fig_3_map.pdf", width = 20, height = 7) 
+
+# Combine maps
+ggarrange(plot.air.1, plot.air.2, plot.air.3, plot.diff.air,
+          plot.water.1, plot.water.2, plot.water.3, plot.diff.water,
+          labels = c("Air (2003-2013)", "Air (2041-2059)", "Air (2081-2099)", "Difference",
+                     "Water (2003-2013)", "Water (2041-2059)", "Water (2081-2099)", "Difference"),
+          ncol = 4, nrow = 2,
+          legend = NULL)
+
+# End figure
+dev.off()
+```
+
+```{r, echo = `FALSE`}
+########################################################################
+
+### Fig 3. Map inset (must be after Fig 3 above)
+
+#```{r, plot, echo = `FALSE`}
+## Save figure
+#pdf("figures/fig_3_map.pdf", width = 6, height = 4.5) 
+#
+#plot.diff.3
+
+# End figure
+#dev.off()
+
+## For loop for early 21st
+#for(i in seq.int(from = 1, to = (ncol(thermal.regime.1) - 15), by = 15)){
+#  i <- i
+#  j <- i + 15
+#  write.table(thermal.regime.1[c(1, i:j)], paste0("data/raw/thermal/tr_1_", i, ".csv", sep =""),
+#          row.names = FALSE, col.names = FALSE, sep = ",")
+#}
+
+
+## For loop for mid 21st
+#for(i in seq.int(from = 1, (ncol(thermal.regime.2) - 20), by = 20)){
+#  i <- i
+#  j <- i + 20
+#  write.table(thermal.regime.2[c(1, i:j)], paste0("data/raw/thermal/tr_2_", i, ".csv", sep =""),
+#          row.names = FALSE, col.names = FALSE, sep = ",")
+#}
+
+## For loop for late 21st
+#for(i in seq.int(from = 1, (ncol(thermal.regime.3) - 20), by = 20)){
+#  i <- i
+#  j <- i + 20
+#  write.table(thermal.regime.3[c(1, i:j)], paste0("data/raw/thermal/tr_3_", i, ".csv", sep =""),
+#          row.names = FALSE, col.names = FALSE, sep = ",")
+#}
 ```
