@@ -120,7 +120,8 @@ air.both.pca$rotation
 round((air.both.pca$sdev / sum(air.both.pca$sdev)), 2)
 
 # PCLR to check if PC1,2 are good at predicting summerkills
-glm.pcr(as.numeric(df.historical$summerkill), as.matrix(df.historical[,c(var.air.raw, var.air.z)]), k = 2)
+#glm.pcr(as.numeric(df.historical$summerkill), as.matrix(df.historical[,c(var.air.raw, var.air.z)]), k = 2)
+### Can't run Compositional on Big Sur, R4.1
 
 # PC1, absolute temp
 # PC2, relative temp
@@ -151,7 +152,8 @@ water.both.pca$rotation
 round((water.both.pca$sdev / sum(water.both.pca$sdev)), 2)
 
 # PCLR to check if PC1,2 are good at predicting summerkills
-glm.pcr(as.numeric(df.historical$summerkill), as.matrix(df.historical[,c(var.water.raw, var.water.z)]), k = 3)
+#glm.pcr(as.numeric(df.historical$summerkill), as.matrix(df.historical[,c(var.water.raw, var.water.z)]), k = 3)
+### Can't run Compositional on Big Sur, R4.1
 
 # PC1, absolute temp
 # PC2, relative temp
@@ -311,7 +313,7 @@ df.future.late <- df.future.late %>%
              water_pc3 = water_pca[,3])
 
 # Join updated mid- and late-future datasets
-df.future <- rbind(df.future.mid, df.future.late)
+df.future <- rbind
 ```
 
 ### Step 5: Training and testing sets

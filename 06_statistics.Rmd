@@ -41,16 +41,17 @@ rm(list = ls())
 setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp")
 
 # Load data
-df.historical <- read.csv(file = "data/processed/df_historical.csv", head = TRUE, sep = ",")
-df.test       <- read.csv(file = "data/processed/df_test.csv", head = TRUE, sep = ",")
-df.future     <- read.csv(file = "data/processed/df_future.csv", head = TRUE, sep = ",")
-df.snow       <- read.csv(file = "data/processed/df_snow.csv", head = TRUE, sep = ",")
-thermal       <- read.csv(file = "data/raw/fish_thermal.csv", head = TRUE, sep = ",")
-time.events   <- read.csv(file = "data/raw/time_events.csv", head = TRUE, sep = ",")
+df.historical    <- read.csv(file = "data/processed/df_historical.csv", head = TRUE, sep = ",")
+df.test          <- read.csv(file = "data/processed/df_test.csv", head = TRUE, sep = ",")
+#df.future        <- read.csv(file = "data/processed/df_future.csv", head = TRUE, sep = ",")
+df.snow          <- read.csv(file = "data/processed/df_snow.csv", head = TRUE, sep = ",")
+thermal          <- read.csv(file = "data/raw/fish_thermal.csv", head = TRUE, sep = ",")
+time.events      <- read.csv(file = "data/raw/time_events.csv", head = TRUE, sep = ",")
+time.summerkills <- read.csv(file = "data/raw/time_summerkills.csv", head = TRUE, sep = ",")
 
 # Load final models
-ridge_a1 <- readRDS("data/models/full/full_ridge_a1.rds")
-ridge_w1 <- readRDS("data/models/full/full_ridge_w1.rds")
+ridge_a1 <- readRDS("data/models/full/full_ridge_a1_ds.rds")
+ridge_w1 <- readRDS("data/models/full/full_ridge_w1_ds.rds")
 
 # Evaluate models
 eval_results <- function(true, predicted, df) {
@@ -227,6 +228,22 @@ mean(time.events$time_after)
 sd(time.events$time_after) / sqrt(length(time.events$time_after))
 median(time.events$time_after)
 hist(time.events$time_after)
+
+# Calculate time between summerkills that occurred in same lake
+time.summerkills <- time.summerkills %>%
+  mutate(month_after = month_after / 12) %>%
+  dplyr::summarize(time_after = year_after + month_after)
+
+# Summary statistics
+mean(time.summerkills$time_after)
+sd(time.summerkills$time_after) / sqrt(length(time.summerkills$time_after))
+median(time.summerkills$time_after)
+hist(time.summerkills$time_after)
+
+
+
+
+
 
 # Count of waterbodies
 length(unique(levels(as.factor(df.historical$lat))))
@@ -1004,7 +1021,7 @@ thermal.sum <- thermal.families %>%
 summary(lm(crit_min ~ diff_crit_surf, thermal.families))
 
 # Linear regression preferred temp ~ diff w/ max surf
-summary(lm(pref_mean ~ diff_crit_surf, thermal.families))
+summary(lm(crit_min ~ max_surf_z, thermal.families))
 
 # Remove objects
 rm(df.family, df.lake, df.snow, df.thermal,
@@ -1051,10 +1068,10 @@ ridge_a1_historical <- ridge_a1_historical %>%
   dplyr::rename(prob = prob_pos)
 
 # Quick plot
-#ggplot() +
-#  geom_point(ridge_a1_historical,
-#             mapping = aes(x = max_air, y = prob),
-#             alpha = 0.002)
+ggplot() +
+  geom_point(ridge_a1_historical,
+             mapping = aes(x = max_air, y = prob),
+             alpha = 0.002)
 
 # Save probabilities
 write.csv(ridge_a1_historical, "data/processed/ridge_a1_historical.csv")

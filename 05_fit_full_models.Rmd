@@ -7,7 +7,6 @@ output: github_document
 
 ### Step 1: Load packages and data
 
-
 ```{r, setup, include = `FALSE`, echo = `FALSE`}
 knitr::opts_knit$set(root.dir = "/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp")
 ```

@@ -151,10 +151,6 @@ a2 <- summerkill ~ lat + long + season + population +
 w2 <- summerkill ~ lat + long + season + population +
   water_pc1 + water_pc2 + water_pc3 + ice_duration + precip
 
-## Simple water model
-#aw2 <- summerkill ~ lat + long + season + population +
-#   water_pc1 + water_pc2 + water_pc3 + air_pc1 + air_pc2 + ice_duration + precip
-
 # Global air model
 a3 <- summerkill ~ lat + long + season + population +
   max_air + mean_air + min_air +
