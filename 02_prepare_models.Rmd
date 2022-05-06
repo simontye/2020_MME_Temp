@@ -1,20 +1,19 @@
 ---
 title: "prepare models"
 author: "SPT"
-date: "2021_08_16"
+date: "2022_05_06"
 output: github_document
 ---
 
 ### Step 1: Load packages and data
 
 ```{r, echo = `FALSE`}
-### Can't install Compositional on Big Sur; R 4.1
-
 # Load packages
 library(tidyverse)
 library(caret)
 library(dplyr)
-#library(Compositional)
+library(readxl)
+library(data.table)
 
 # Reset global environment
 rm(list = ls())
@@ -23,14 +22,9 @@ rm(list = ls())
 setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/data")
 
 # Load data
-df.historical <- read.csv(file = "processed/df_historical.csv", head = TRUE, sep = ",")
-df.future     <- read.csv(file = "processed/df_future.csv", head = TRUE, sep = ",")
-```
+df.historical <- fread("processed/df_historical.csv")
+df.future     <- fread("processed/df_future.csv")
 
-### Step 2: Format data
-
-```{r echo = `FALSE`}
-######################################
 # Air variables
 var.air.raw     <- c("max_air", "mean_air", "min_air")
 var.air.z       <- c("max_air_z", "mean_air_z", "min_air_z")
@@ -51,8 +45,11 @@ var.water       <- c(var.water.raw,
                      var.water.z,
                      var.water.other)
 
-# All variables
-var.all         <- c(var.air, var.water)
+# Productivity and lake size variables
+var.lake        <- c("secchi_m", "size_km2")
+
+# All environmental variables
+var.all.env     <- c(var.air, var.water, var.lake)
 
 # Fish variables
 var.fish   <- c("centrarchidae", "percidae", "esocidae", "ictaluridae",
@@ -67,7 +64,7 @@ var.cause <- c("anthropogenic", "infectious", "summerkill", "winterkill", "unkno
 # Fish thermal variables
 var.temp  <- c("cold_temp", "cool_temp", "warm_temp", "unknown_temp")
 
-# All fish variables
+# All variables
 var.all.fish <-c(var.fish, var.temp, var.cause)
 
 ######################################
@@ -82,9 +79,16 @@ df.historical <- df.historical %>%
       long         = as.numeric(long),
       state        = as.factor(state),
       population   = as.numeric(population),
-      ice_duration = as.numeric(ice_duration)) %>%
+      ice_duration = as.numeric(ice_duration),
+      secchi_m     = as.numeric(secchi_m),
+      size_km2     = as.numeric(size_km2)) %>%
   dplyr::select(., c(year, month, season, summerkill, lat, long, state, population,
-                     all_of(var.all), all_of(var.all.fish)))
+                     all_of(var.all.env), all_of(var.all.fish))) %>%
+  mutate(summerkill = ifelse(is.na(summerkill) == TRUE, 0, summerkill)) %>%
+  mutate(summerkill = as.factor(as.character(summerkill))) %>%
+  mutate(summerkill = fct_recode(summerkill,
+                                 "pos" = "1",
+                                 "neg" = "0"))
 
 ######################################
 # Reduce future dataframe for models
@@ -99,7 +103,7 @@ df.future <- df.future %>%
       population   = as.numeric(population),
       ice_duration = as.numeric(ice_duration)) %>%
   dplyr::select(., c(year, month, season, lat, long, state, population,
-                     all_of(var.all)))
+                     all_of(var.all.env)))
 ```
 
 ### Step 3: Historical PCAs
@@ -119,16 +123,9 @@ air.both.pca$rotation
 # Calculate proportion of variance explained
 round((air.both.pca$sdev / sum(air.both.pca$sdev)), 2)
 
-# PCLR to check if PC1,2 are good at predicting summerkills
-#glm.pcr(as.numeric(df.historical$summerkill), as.matrix(df.historical[,c(var.air.raw, var.air.z)]), k = 2)
-### Can't run Compositional on Big Sur, R4.1
-
-# PC1, absolute temp
-# PC2, relative temp
-
 # Separate PC1:2
 air_pca <- df.historical %>%
-  dplyr::select(max_surf,  mean_air,   min_air,
+  dplyr::select(max_air,   mean_air,   min_air,
                 max_air_z, mean_air_z, min_air_z) %>%
   as.matrix() %*% air.both.pca$rotation[, 1:2]
 
@@ -151,14 +148,6 @@ water.both.pca$rotation
 # Calculate proportion of variance explained
 round((water.both.pca$sdev / sum(water.both.pca$sdev)), 2)
 
-# PCLR to check if PC1,2 are good at predicting summerkills
-#glm.pcr(as.numeric(df.historical$summerkill), as.matrix(df.historical[,c(var.water.raw, var.water.z)]), k = 3)
-### Can't run Compositional on Big Sur, R4.1
-
-# PC1, absolute temp
-# PC2, relative temp
-# PC3, surface / deep difference
-
 # Separate PC1:3
 water_pca <- df.historical %>%
   dplyr::select(max_surf,   mean_surf,   max_bot,   mean_bot,
@@ -170,15 +159,6 @@ df.historical <- df.historical %>%
   add_column(water_pc1 = water_pca[,1],
              water_pc2 = water_pca[,2],
              water_pc3 = water_pca[,3])
-
-#######################################
-
-# Change summerkill back to factor
-df.historical <- df.historical %>%
-  mutate(summerkill = as.factor(summerkill)) %>%
-  mutate(summerkill = fct_recode(summerkill),
-                                 "pos" = "1",
-                                 "neg" = "0")
 ```
 
 ### Step 4: Future (mid) PCAs
@@ -202,12 +182,9 @@ air.both.pca$rotation
 # Calculate proportion of variance explained
 round((air.both.pca$sdev / sum(air.both.pca$sdev)), 2)
 
-# PC1, absolute temp
-# PC2, relative temp
-
 # Separate PC1:2
 air_pca <- df.future.mid %>%
-  dplyr::select(max_surf,  mean_air,   min_air,
+  dplyr::select(max_air,   mean_air,   min_air,
                 max_air_z, mean_air_z, min_air_z) %>%
   as.matrix() %*% air.both.pca$rotation[, 1:2]
 
@@ -229,10 +206,6 @@ water.both.pca$rotation
 
 # Calculate proportion of variance explained
 round((water.both.pca$sdev / sum(water.both.pca$sdev)), 2)
-
-# PC1, absolute temp
-# PC2, relative temp
-# PC3, surface / deep difference
 
 # Separate PC1:3
 water_pca <- df.future.mid %>%
@@ -268,12 +241,9 @@ air.both.pca$rotation
 # Calculate proportion of variance explained
 round((air.both.pca$sdev / sum(air.both.pca$sdev)), 2)
 
-# PC1, absolute temp
-# PC2, relative temp
-
 # Separate PC1:2
 air_pca <- df.future.late %>%
-  dplyr::select(max_surf,  mean_air,   min_air,
+  dplyr::select(max_air,   mean_air,   min_air,
                 max_air_z, mean_air_z, min_air_z) %>%
   as.matrix() %*% air.both.pca$rotation[, 1:2]
 
@@ -296,10 +266,6 @@ water.both.pca$rotation
 # Calculate proportion of variance explained
 round((water.both.pca$sdev / sum(water.both.pca$sdev)), 2)
 
-# PC1, absolute temp
-# PC2, relative temp
-# PC3, surface / deep difference
-
 # Separate PC1:3
 water_pca <- df.future.late %>%
   dplyr::select(max_surf,   mean_surf,   max_bot,   mean_bot,
@@ -313,7 +279,7 @@ df.future.late <- df.future.late %>%
              water_pc3 = water_pca[,3])
 
 # Join updated mid- and late-future datasets
-df.future <- rbind
+df.future <- rbind(df.future.mid, df.future.late)
 ```
 
 ### Step 5: Training and testing sets
@@ -322,7 +288,7 @@ Formats and partitions the data into training and testing sets, which are scaled
 
 ```{r echo = `FALSE`}
 # Reduce historical dataframe for models
-df.test <- df.historical %>%
+df.historical <- df.historical %>%
     mutate(
       year         = as.character(year),
       month        = as.character(month),
@@ -335,12 +301,9 @@ df.test <- df.historical %>%
       ice_duration = as.numeric(ice_duration)) %>%
   dplyr::select(., c(year, month, season, summerkill,
                      lat, long, state, population,
-                     all_of(var.all),
+                     all_of(var.all.env),
                      water_pc1, water_pc2, water_pc3,
-                     air_pc1, air_pc2)) %>%
-  mutate(summerkill = fct_recode(summerkill,
-                                 "pos" = "1",
-                                 "neg" = "0"))
+                     air_pc1, air_pc2))
 ```
 
 ```{r echo = `FALSE`}
@@ -348,24 +311,24 @@ df.test <- df.historical %>%
 set.seed(406)
 
 # Creates series of training partitions
-in.training <- createDataPartition(df.test$summerkill, p = .75, list = FALSE)
+in.training <- createDataPartition(df.historical$summerkill, p = .75, list = FALSE)
 
 # Partition training data
-training <- df.test  %>%
+training <- df.historical  %>%
   slice(in.training)
 
 # Partition testing data
-testing <- df.test %>%
+testing <- df.historical %>%
   slice(-in.training)
 
 # Scale data
 pre.proc.values <- preProcess(training, method = c("center", "scale"))
 
-# Create training set
+# Create training sets
 training <- predict(pre.proc.values, training) %>%
   mutate(year = as.integer(year))
 
-# Create testing set
+# Create testing sets
 testing <- predict(pre.proc.values, testing) %>%
   mutate(summerkill = factor(testing$summerkill, 
                              levels = c("pos", "neg"),
@@ -375,9 +338,8 @@ testing <- predict(pre.proc.values, testing) %>%
 # Export data
 write_csv(testing,       "models/testing.csv")
 write_csv(training,      "models/training.csv")
-write_csv(df.historical, "processed/df_historical.csv")
-write_csv(df.future,     "processed/df_future.csv")
-write_csv(df.test,       "processed/df_test.csv")
+write_csv(df.historical, "processed/df_historical2.csv")
+write_csv(df.future,     "processed/df_future2.csv")
 ```
 
 ######################################

@@ -1,7 +1,7 @@
 ---
 title: "statistics"
 author: "SPT"
-date: "2021_08_16"
+date: "2022_05_06"
 output: github_document
 ---
 
@@ -12,8 +12,6 @@ knitr::opts_knit$set(root.dir = "/Users/simontye/Research/Projects/MME_Temp/2020
 ```
 
 ```{r, echo = `FALSE`}
-### Can't install RVAideMemoire on Big Sur; R 4.1
-
 # Load packages
 library(ggplot2)
 library(ggthemes)
@@ -32,6 +30,8 @@ library(dplyr)
 library(fmsb)
 library(rstatix)
 library(caret)
+library(data.table)
+library(tidyr)
 #library(RVAideMemoire)
 
 # Reset global environment
@@ -41,16 +41,16 @@ rm(list = ls())
 setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp")
 
 # Load data
-df.historical    <- read.csv(file = "data/processed/df_historical.csv", head = TRUE, sep = ",")
-df.test          <- read.csv(file = "data/processed/df_test.csv", head = TRUE, sep = ",")
-#df.future        <- read.csv(file = "data/processed/df_future.csv", head = TRUE, sep = ",")
-df.snow          <- read.csv(file = "data/processed/df_snow.csv", head = TRUE, sep = ",")
-thermal          <- read.csv(file = "data/raw/fish_thermal.csv", head = TRUE, sep = ",")
-time.events      <- read.csv(file = "data/raw/time_events.csv", head = TRUE, sep = ",")
-time.summerkills <- read.csv(file = "data/raw/time_summerkills.csv", head = TRUE, sep = ",")
+df.historical    <- fread("data/processed/df_historical.csv")
+df.historical2   <- fread("data/processed/df_historical2.csv")
+df.future        <- fread("data/processed/df_future2.csv")
+df.snow          <- fread("data/processed/df_snow.csv")
+thermal          <- fread("data/raw/thermal/fish_thermal.csv")
+time.events      <- fread("data/raw/time/time_events.csv")
+time.summerkills <- fread("data/raw/time/time_summerkills.csv")
 
 # Load final models
-ridge_a1 <- readRDS("data/models/full/full_ridge_a1_ds.rds")
+ridge_a2 <- readRDS("data/models/full/full_ridge_a2_ds.rds")
 ridge_w1 <- readRDS("data/models/full/full_ridge_w1_ds.rds")
 
 # Evaluate models
@@ -60,21 +60,9 @@ eval_results <- function(true, predicted, df) {
   SST      <- sum((true - mean(true))^2)
   R_square <- 1 - SSE / SST
   RMSE     <- sqrt(SSE/nrow(df))
-
   # Save metrics
-  data.frame(
-    RMSE    = RMSE,
-    Rsquare = R_square)
+  data.frame(RMSE = RMSE, Rsquare = R_square)
 }
-```
-
-```{r, echo = `FALSE`}
-# No downsampling
-control.logloss <- trainControl(method          = "repeatedcv",
-                                number          = 5,
-                                repeats         = 5,
-                                summaryFunction = mnLogLoss,
-                                classProbs      = TRUE)
 
 # Downsampling
 control.logloss.ds <- trainControl(method          = "repeatedcv",
@@ -83,6 +71,12 @@ control.logloss.ds <- trainControl(method          = "repeatedcv",
                                    summaryFunction = mnLogLoss,
                                    classProbs      = TRUE,
                                    sampling        = "down")
+
+# Create grid of parameters
+par_grid <-  expand.grid(alpha = 0, lambda = seq(3.5e-7, 1.5e-5, length.out = 6))
+
+# Set seed
+set.seed(538)
 ```
 
 ### Step 2: Format data
@@ -95,6 +89,23 @@ df.historical <- df.historical %>%
          month        = as.character(month),
          season       = as.factor(season),
          summerkill   = as.numeric(summerkill),
+         lat          = as.numeric(lat),
+         long         = as.numeric(long),
+         state        = as.factor(state),
+         population   = as.numeric(population),
+         mean_bot_z   = as.numeric(mean_bot_z),
+         mean_surf_z  = as.numeric(mean_surf_z),
+         mean_air_z   = as.numeric(mean_air_z),
+         ice_duration = as.numeric(ice_duration)) %>%
+  mutate_at(c(30:54, 58:104), ~replace_na(., 0))
+
+# Format historical dataset
+df.historical2 <- df.historical2 %>%
+  as.data.frame(.) %>%
+  mutate(year         = as.character(year),
+         month        = as.character(month),
+         season       = as.factor(season),
+         summerkill   = as.factor(summerkill),
          lat          = as.numeric(lat),
          long         = as.numeric(long),
          state        = as.factor(state),
@@ -118,8 +129,6 @@ df.future <- df.future %>%
          mean_surf_z  = as.numeric(mean_surf_z),
          mean_air_z   = as.numeric(mean_air_z),
          ice_duration = as.numeric(ice_duration))
-#%>%
-  #na.omit(.)
 
 # Format snow dataset
 df.snow <- df.snow %>%
@@ -140,7 +149,7 @@ fishkill.all <- df.historical %>%
 
 # Format summerkill data
 fishkill.summerkill <- df.historical %>%
-  filter(month %in% c("6", "7", "8")) %>% # include sept? till did
+  filter(month %in% c("6", "7", "8")) %>%
   dplyr::mutate(fishkill = ifelse(anthropogenic == 1 | infectious == 1 | summerkill == 1 | winterkill == 1 | unknown == 1, 1, 0)) %>%
   dplyr::mutate(fishkill_cause = ifelse(anthropogenic == 1, "Anthropogenic",
                                         ifelse(infectious == 1, "Infectious",
@@ -166,6 +175,8 @@ fishkill.winterkill <- df.historical %>%
 fishkill.snow <- fishkill.winterkill %>%   
   mutate(lat_round  = round(lat, 1),
          long_round = round(long, 1)) %>%
+  mutate(year  = as.character(year)) %>%
+  mutate(month = as.character(month)) %>%
   inner_join(df.snow, by = c('year', 'month', 'lat_round', 'long_round')) %>%
   mutate(winterkill = ifelse(!is.na(fishkill_cause) & fishkill_cause == 'Winterkill', 1, 0))
 
@@ -192,12 +203,12 @@ pretty <- theme_classic(base_size = 12) +
 # Events by state
 df.state <- df.historical %>%
   group_by(state) %>%
-  dplyr::summarize(anthropogenic = sum(anthropogenic),
-                   infectious    = sum(infectious),
-                   summerkill    = sum(as.numeric(summerkill)),
-                   winterkill    = sum(winterkill),
-                   unknown       = sum(unknown),
-                   fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown)))
+  dplyr::summarize(anthropogenic = sum(anthropogenic, na.rm = TRUE),
+                   infectious    = sum(infectious, na.rm = TRUE),
+                   summerkill    = sum(as.numeric(summerkill), na.rm = TRUE),
+                   winterkill    = sum(winterkill, na.rm = TRUE),
+                   unknown       = sum(unknown, na.rm = TRUE),
+                   fishkills     = sum(c(anthropogenic, infectious, summerkill, winterkill, unknown, na.rm = TRUE)))
 
 # Fishkills by lake
 df.lake <- df.historical %>%
@@ -240,14 +251,9 @@ sd(time.summerkills$time_after) / sqrt(length(time.summerkills$time_after))
 median(time.summerkills$time_after)
 hist(time.summerkills$time_after)
 
-
-
-
-
-
 # Count of waterbodies
-length(unique(levels(as.factor(df.historical$lat))))
-length(unique(levels(as.factor(df.historical$long))))
+length(unique(levels(as.factor(df.historical$site_id))))
+length(unique(levels(as.factor(df.historical$site_id))))
 
 # Fishkill causes by thermal category
 df.thermal <- df.historical %>%
@@ -302,6 +308,11 @@ df.family <- df.historical %>%
          cause  = as.character(cause)) %>%
   .[with(., order(family, cause)), ]
 
+# Summerkills by family
+df.family %>%
+  filter(cause == "summerkill") %>%
+  dplyr::summarize(count = sum(count))
+  
 # Fishkills by family
 df.family %>%
   group_by(family) %>%
@@ -309,16 +320,21 @@ df.family %>%
 
 # Fishkills with taxonomic information
 df.historical %>%
-  filter(anthropogenic >= 1 | infectious >= 1 | summerkill >= 1 | winterkill >= 1 | unknown >= 1, fish_families >= 1) %>%
+  filter(anthropogenic >= 1 | infectious >= 1 |
+           summerkill >= 1 | winterkill >= 1 |
+           unknown >= 1, fish_families >= 1) %>%
   nrow(.)
 
 # Fishkills with thermal category
 df.historical %>%
   filter(warm_temp >= 1 | cool_temp >= 1 | cold_temp >= 1 | unknown_temp >= 1) %>%
-  dplyr::summarize(warm_temp    = sum(warm_temp),
-                   cool_temp    = sum(cool_temp),
-                   cold_temp    = sum(cold_temp),
-                   unknown_temp = sum(unknown_temp))
+  dplyr::summarize(warm_temp    = sum(warm_temp, na.rm = TRUE),
+                   cool_temp    = sum(cool_temp, na.rm = TRUE),
+                   cold_temp    = sum(cold_temp, na.rm = TRUE),
+                   unknown_temp = sum(unknown_temp, na.rm = TRUE))
+
+# Columaris
+table(df.historical$cause.detail)
 ```
 
 ### Step 4: Means
@@ -405,6 +421,8 @@ winterkill.temp <- fishkill.winterkill %>%
 ((median(winterkill.temp$mean_air)  - median(winter.temp$mean_air))  /  (median(winter.temp$mean_air)) * 100)
 ((median(winterkill.temp$mean_surf) - median(winter.temp$mean_surf)) / (median(winter.temp$mean_surf)) * 100)
 ((median(winterkill.temp$mean_bot)  - median(winter.temp$mean_bot))  / (median(winter.temp$mean_bot))  * 100)
+
+#################################################################
 
 # Remove objects
 rm(summer.temp, anthro.temp, infect.temp, summerkill.temp,
@@ -760,6 +778,62 @@ TukeyHSD(anova.w.ice)
 rm(anova.w.snow, anova.w.ice)
 ```
 
+### Step 4: Lake size and secchi depth
+
+```{r, echo = `FALSE`}
+#################################################################
+### Lake size (km^2)
+
+# Levene test
+leveneTest(size_km2 ~ fishkill_cause, fishkill.summerkill) # Welch
+leveneTest(size_km2 ~ fishkill_cause, fishkill.winterkill) # ANOVA
+
+# Dunnett's test
+DunnettTest(size_km2 ~ fishkill_cause, fishkill.summerkill, control = 'Summer Non-event')
+
+# Anthropogenic (not enough observations)
+#t.test(mean_air ~ anthropogenic, fishkill.summerkill)
+
+# Infectious
+t.test(size_km2 ~ infectious, fishkill.summerkill)
+
+# Summerkill
+t.test(size_km2 ~ summerkill, fishkill.summerkill)
+
+# Winterkill
+#winter.a <- aov(size_km2 ~ fishkill_cause, fishkill.winterkill)
+winter.a <- aov(size_km2 ~ as.factor(winterkill), fishkill.winterkill)
+summary(winter.a)
+TukeyHSD(winter.a)
+
+t.test(size_km2 ~ winterkill, fishkill.winterkill)
+
+#################################################################
+### Secchi depth
+
+# Levene test
+leveneTest(secchi_m ~ fishkill_cause, fishkill.summerkill) # Welch
+leveneTest(secchi_m ~ fishkill_cause, fishkill.winterkill) # ANOVA (barely)
+
+# Dunnett's test
+DunnettTest(secchi_m ~ fishkill_cause, fishkill.summerkill, control = 'Summer Non-event')
+
+# Anthropogenic (not enough observations)
+#t.test(secchi_m ~ anthropogenic, fishkill.summerkill)
+
+# Infectious
+t.test(secchi_m ~ infectious, fishkill.summerkill)
+
+# Summerkill
+t.test(secchi_m ~ summerkill, fishkill.summerkill)
+
+# Winterkill
+#winter.s <- aov(secchi_m ~ fishkill_cause, fishkill.winterkill)
+winter.s <- aov(secchi_m ~ as.factor(winterkill), fishkill.winterkill)
+summary(winter.s)
+TukeyHSD(winter.s)
+```
+
 ### Step 6: Thermal categories
 
 Linear regression with CTmax or thermal preference and difference with maximum surface water temp of summerkills
@@ -1020,7 +1094,7 @@ thermal.sum <- thermal.families %>%
 # Linear regression CTmax ~ diff w/ max surf
 summary(lm(crit_min ~ diff_crit_surf, thermal.families))
 
-# Linear regression preferred temp ~ diff w/ max surf
+# Linear regression CTmax ~ max_surf_z
 summary(lm(crit_min ~ max_surf_z, thermal.families))
 
 # Remove objects
@@ -1040,48 +1114,97 @@ rm(df.family, df.lake, df.snow, df.thermal,
    thermal.sciaenidae, thermal.sum, thermal, time.events)
 ```
 
+### Step 8: Lake size and productivity
+```{r, echo = FALSE}
+#################################################################
+### Lake size
+
+# Format data
+summerkill.size <- summerkill.temp %>%
+  dplyr::select(., c(site_id, size_km2)) %>%
+  distinct(.)
+
+# Format data
+summer.size <- summer.temp %>%
+  dplyr::select(., c(site_id, size_km2)) %>%
+  distinct(.)
+
+### Lake size
+
+# Mean (% change)
+((mean(summerkill.size$size_km2)  - mean(summer.size$size_km2))  /  (mean(summer.size$size_km2)) * 100)
+
+# Median (% change)
+((median(summerkill.size$size_km2)  - median(summer.size$size_km2))  /  (median(summer.size$size_km2)) * 100)
+
+#################################################################
+### Productivity
+
+# Format data
+summerkill.prod <- summerkill.temp %>%
+  dplyr::select(., c(site_id, secchi_m)) %>%
+  distinct(.)
+
+# Format size data
+summer.prod <- summer.temp %>%
+  dplyr::select(., c(site_id, secchi_m)) %>%
+  distinct(.)
+
+# Mean (% change)
+((mean(summerkill.prod$secchi_m)  - mean(summer.prod$secchi_m))  /  (mean(summer.prod$secchi_m)) * 100)
+
+# Median (% change)
+((median(summerkill.prod$secchi_m)  - median(summer.prod$secchi_m))  / (median(summer.prod$secchi_m))  * 100)
+
+```
+
 ### Step 7: Historical probabilities
 
 ```{r, echo = `FALSE`}
 # Subset variables 
-ridge_a1_historical <- df.test %>%
-  dplyr::select(., lat, long, season, population,
-                max_air, max_air_z, ice_duration, precip)
+ridge_a2_historical <- df.historical2 %>%
+  dplyr::select(., c(lat, long, season, population,
+                     max_air, mean_air, min_air,
+                     max_air_z, mean_air_z, min_air_z,
+                     air_quad_temp, ice_duration, precip,
+                     secchi_m, size_km2))
 
 # Replace summerkills with 0s
-ridge_a1_historical$summerkill <- 0
+ridge_a2_historical$summerkill <- 0
 
 # Create dummy model matrix
-newx.a1 <- model.matrix(summerkill ~ ., ridge_a1_historical)
+newx.a2 <- model.matrix(summerkill ~ ., ridge_a2_historical)
 
 # Calculate probabilities
-ridge_a1_historical$prob <- as.vector(predict(ridge_a1,
-                                              newx = newx.a1, type = "prob",
-                                              s = ridge_a1$bestTune$lambda))
+ridge_a2_historical$prob <- as.vector(predict(ridge_a2,
+                                              newx = newx.a2, type = "prob",
+                                              s = ridge_a2$bestTune$lambda))
 
 # Reformat probabilities
-ridge_a1_historical <- ridge_a1_historical %>%
+ridge_a2_historical <- ridge_a2_historical %>%
   mutate(prob_pos = prob$pos,
          prob     = NULL,
          lat      = df.historical$lat,
          long     = df.historical$long) %>%
   dplyr::rename(prob = prob_pos)
 
-# Quick plot
-ggplot() +
-  geom_point(ridge_a1_historical,
-             mapping = aes(x = max_air, y = prob),
-             alpha = 0.002)
+## Quick plot
+#ggplot() +
+#  geom_point(ridge_a2_historical,
+#             mapping = aes(x = air_pc1, y = prob),
+#             alpha = 0.002)
 
 # Save probabilities
-write.csv(ridge_a1_historical, "data/processed/ridge_a1_historical.csv")
+write.csv(ridge_a2_historical, "data/processed/ridge_a2_historical.csv")
 ```
 
 ```{r, echo = `FALSE`}
 # Subset variables 
-ridge_w1_historical <- df.test %>%
-  dplyr::select(., lat, long, season, population,
-                mean_surf, mean_surf_z, ice_duration, precip)
+ridge_w1_historical <- df.historical2 %>%
+  dplyr::select(., c(lat, long, season, population,
+                     mean_surf, mean_surf_z,
+                     ice_duration, precip,
+                     secchi_m, size_km2))
 
 # Replace summerkills with 0s
 ridge_w1_historical$summerkill <- 0
@@ -1102,7 +1225,7 @@ ridge_w1_historical <- ridge_w1_historical %>%
          long     = df.historical$long) %>%
   dplyr::rename(prob = prob_pos)
 
-# Quick plot
+## Quick plot
 #ggplot() +
 #  geom_point(ridge_w1_historical,
 #             mapping = aes(x = mean_surf, y = prob),
@@ -1112,21 +1235,36 @@ ridge_w1_historical <- ridge_w1_historical %>%
 write.csv(ridge_w1_historical, "data/processed/ridge_w1_historical.csv")
 ```
 
-### Step 9: Historical and future probabilities
+### Step 9: Future probabilities
 
 ```{r, echo = `FALSE`}
+# Future a2 model
+a2.future <- summerkill ~ lat + long + season + population +
+  max_air + mean_air + min_air + max_air_z + mean_air_z + min_air_z +
+  air_quad_temp + precip + secchi_m + size_km2
+
+# Future a2 model
+future_ridge_a2_ds <- train(a2.future, 
+                            data      = df.historical2, 
+                            method    = "glmnet",
+                            metric    = "logLoss",
+                            tuneGrid  = par_grid,
+                            trControl = control.logloss.ds)
+
 # Subset variables 
-ridge_a1_future <- df.future %>%
-  dplyr::select(., lat, long, season, population,
-                max_air, max_air_z, precip)
+ridge_a2_future <- df.future %>%
+  dplyr::select(., c(lat, long, season, population,
+                     max_air, mean_air, min_air,
+                     max_air_z, mean_air_z, min_air_z,
+                     air_quad_temp, precip, secchi_m, size_km2))
 
 # Calculate probabilities
-ridge_a1_future$prob <- as.vector(predict(ridge_a1_revised,
-                                          newdata = ridge_a1_future, type = "prob",
-                                          s = ridge_a1_revised$bestTune$lambda))
+ridge_a2_future$prob <- as.vector(predict(future_ridge_a2_ds,
+                                          newdata = ridge_a2_future, type = "prob",
+                                          s = future_ridge_a2_ds$bestTune$lambda))
 
 # Reformat probabilities
-ridge_a1_future <- ridge_a1_future %>%
+ridge_a2_future <- ridge_a2_future %>%
   mutate(prob_pos = prob$pos,
          prob     = NULL,
          lat      = df.future$lat,
@@ -1134,19 +1272,31 @@ ridge_a1_future <- ridge_a1_future %>%
   dplyr::rename(prob = prob_pos)
 
 # Save probabilities
-write.csv(ridge_a1_future, "data/processed/ridge_a1_future.csv")
+write.csv(ridge_a2_future, "data/processed/ridge_a2_future.csv")
 ```
 
 ```{r, echo = `FALSE`}
+# Future w1 model
+w1.future <- summerkill ~ lat + long + season + population +
+  mean_surf + mean_surf_z + precip + secchi_m + size_km2
+
+# Future w1 model
+future_ridge_w1_ds <- train(w1.future, 
+                            data      = df.historical2, 
+                            method    = "glmnet",
+                            metric    = "logLoss",
+                            tuneGrid  = par_grid,
+                            trControl = control.logloss.ds)
+
 # Subset variables 
 ridge_w1_future <- df.future %>%
   dplyr::select(., lat, long, season, population,
-                mean_surf, mean_surf_z, precip)
+                mean_surf, mean_surf_z, precip, secchi_m, size_km2)
 
 # Calculate probabilities
-ridge_w1_future$prob <- as.vector(predict(ridge_w1_revised,
+ridge_w1_future$prob <- as.vector(predict(future_ridge_w1_ds,
                                           newdata = ridge_w1_future, type = "prob",
-                                          s = ridge_w1_revised$bestTune$lambda))
+                                          s = future_ridge_w1_ds$bestTune$lambda))
 
 # Reformat probabilities
 ridge_w1_future <- ridge_w1_future %>%
@@ -1166,7 +1316,7 @@ write.csv(ridge_w1_future, "data/processed/ridge_w1_future.csv")
 # Historical (2003-2013)
 prob.a <- df.historical %>%
   dplyr::select(lat, long, year) %>%
-  mutate(prob_air   = ridge_a1_historical$prob,
+  mutate(prob_air   = ridge_a2_historical$prob,
          prob_water = ridge_w1_historical$prob,
          no_air     = 1 - prob_air,
          no_water   = 1 - prob_water) %>%
@@ -1179,7 +1329,7 @@ prob.a <- df.historical %>%
 # Future (2041-2059)
 prob.b <- df.future %>%
   dplyr::select(lat, long, year) %>%
-  mutate(prob_air   = ridge_a1_future$prob,
+  mutate(prob_air   = ridge_a2_future$prob,
          prob_water = ridge_w1_future$prob,
          no_air     = 1 - prob_air,
          no_water   = 1 - prob_water) %>%
@@ -1193,7 +1343,7 @@ prob.b <- df.future %>%
 # Future (2081-2099)
 prob.c <- df.future %>%
   dplyr::select(lat, long, year) %>%
-  mutate(prob_air   = ridge_a1_future$prob,
+  mutate(prob_air   = ridge_a2_future$prob,
          prob_water = ridge_w1_future$prob,
          no_air     = 1 - prob_air,
          no_water   = 1 - prob_water) %>%

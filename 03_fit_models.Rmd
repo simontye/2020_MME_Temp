@@ -1,7 +1,7 @@
 ---
 title: "fit models"
 author: "SPT"
-date: "2021_07_10"
+date: "2022_05_06"
 output: github_document
 ---
 
@@ -41,8 +41,8 @@ rm(list = ls())
 setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
 
 # Load data
-training      <- read.csv(file = "training.csv", head = TRUE, sep = ",")
-testing       <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
+training    <- fread("training.csv")
+testing     <- fread("testing.csv")
 ```
 
 ### Step 2: Verify formatting
@@ -74,8 +74,11 @@ var.water       <- c(var.water.raw,
                      var.water.pc,
                      var.water.other)
 
+# Productivity and lake size variables
+var.lake        <- c("secchi_m", "size_km2")
+
 # All variables
-var.all         <- c(var.air, var.water)
+var.env.all     <- c(var.air, var.water, var.lake)
 
 # Fish variables
 var.fish   <- c("centrarchidae", "percidae", "esocidae", "ictaluridae",
@@ -94,22 +97,6 @@ var.temp  <- c("cold_temp", "cool_temp", "warm_temp", "unknown_temp")
 var.all.fish <-c(var.fish, var.temp, var.cause)
 
 ######################################
-# Reduce testing df for models
-testing <- testing %>%
-    mutate(
-      year         = as.character(year),
-      month        = as.character(month),
-      season       = as.factor(season),
-      summerkill   = as.factor(summerkill),
-      lat          = as.numeric(lat),
-      long         = as.numeric(long),
-      state        = as.factor(state),
-      population   = as.numeric(population),
-      ice_duration = as.numeric(ice_duration)) %>%
-   dplyr::select(., c(year, month, season, summerkill,
-                     lat, long, state, population,
-                     all_of(var.all)))
-
 # Reduce training df for models
 training <- training %>%
    mutate(
@@ -124,7 +111,23 @@ training <- training %>%
       ice_duration = as.numeric(ice_duration)) %>%
    dplyr::select(., c(year, month, season, summerkill,
                      lat, long, state, population,
-                     all_of(var.all)))
+                     all_of(var.env.all)))
+
+# Reduce testing df for models
+testing <- testing %>%
+    mutate(
+      year         = as.character(year),
+      month        = as.character(month),
+      season       = as.factor(season),
+      summerkill   = as.factor(summerkill),
+      lat          = as.numeric(lat),
+      long         = as.numeric(long),
+      state        = as.factor(state),
+      population   = as.numeric(population),
+      ice_duration = as.numeric(ice_duration)) %>%
+   dplyr::select(., c(year, month, season, summerkill,
+                     lat, long, state, population,
+                     all_of(var.env.all)))
 ```
 
 ### Step 3: Specify models
@@ -137,42 +140,24 @@ Set up simple and complex air and water temperature models for all taxa
 
 # Simple air model
 a1 <- summerkill ~ lat + long + season + population +
-   max_air + max_air_z + ice_duration + precip
+   max_air + max_air_z + ice_duration + precip + secchi_m + size_km2
 
 # Simple water model
 w1 <- summerkill ~ lat + long + season + population +
-  mean_surf + mean_surf_z + ice_duration + precip
+   mean_surf + mean_surf_z + ice_duration + precip + secchi_m + size_km2
 
-# Simple air model
+# Complex air model
 a2 <- summerkill ~ lat + long + season + population +
-  air_pc1 + air_pc2 + ice_duration + precip
-
-# Simple water model
-w2 <- summerkill ~ lat + long + season + population +
-  water_pc1 + water_pc2 + water_pc3 + ice_duration + precip
-
-# Global air model
-a3 <- summerkill ~ lat + long + season + population +
   max_air + mean_air + min_air +
   max_air_z + mean_air_z + min_air_z +
-  air_quad_temp + ice_duration + precip
+  air_quad_temp + ice_duration + precip + secchi_m + size_km2
 
-# Global water model
-w3 <- summerkill ~ lat + long + season + population +
+# Complex water model
+w2 <- summerkill ~ lat + long + season + population +
   max_bot + mean_bot + max_surf + mean_surf +
   max_bot_z + mean_bot_z + max_surf_z + mean_surf_z +
   layer_diff + water_quad_temp + peak_temp + ice_duration + precip +
-  cumulative_above_0
-
-## Global model
-#aw3 <- summerkill ~ lat + long + season + population + state +
-#  max_air + mean_air + min_air +
-#  max_air_z + mean_air_z + min_air_z +
-#  air_quad_temp + ice_duration +
-#  max_bot + mean_bot + max_surf + mean_surf +
-#  max_bot_z + mean_bot_z + max_surf_z + mean_surf_z +
-#  layer_diff + water_quad_temp + peak_temp + ice_duration +
-#  cumulative_above_0 + cumulative_above_5 + cumulative_above_10
+  cumulative_above_0 + secchi_m + size_km2
 
 ######################################
 
@@ -201,42 +186,32 @@ Logistic models generalized models and stepwise comparisons
 set.seed(736)
 
 # Logistic regression model for air temperature
-logistic_a1  <- glm(a1,  training, family = "binomial")
-logistic_a2  <- glm(a2,  training, family = "binomial")
-logistic_a3  <- glm(a3,  training, family = "binomial")
-logistic_w1  <- glm(w1,  training, family = "binomial")
-logistic_w2  <- glm(w2,  training, family = "binomial")
-logistic_w3  <- glm(w3,  training, family = "binomial")
+logistic_a1    <- glm(a1, training, family = "binomial")
+logistic_a2    <- glm(a2, training, family = "binomial")
+logistic_w1    <- glm(w1, training, family = "binomial")
+logistic_w2    <- glm(w2, training, family = "binomial")
 
 # Stepwise model comparisons by AIC
-logistic_a1_stepwise  <- step(logistic_a1)
-logistic_a2_stepwise  <- step(logistic_a2)
-logistic_a3_stepwise  <- step(logistic_a3)
-logistic_w1_stepwise  <- step(logistic_w1)
-logistic_w2_stepwise  <- step(logistic_w2)
-logistic_w3_stepwise  <- step(logistic_w3)
+logistic_a1_stepwise    <- step(logistic_a1)
+logistic_a2_stepwise    <- step(logistic_a2)
+logistic_w1_stepwise    <- step(logistic_w1)
+logistic_w2_stepwise    <- step(logistic_w2)
 
 # Save models 
-write_rds(logistic_a1,           "assessment/logistic_a1.rds")
-write_rds(logistic_a1_stepwise,  "assessment/logistic_a1_stepwise.rds")
-write_rds(logistic_a2,           "assessment/logistic_a2.rds")
-write_rds(logistic_a2_stepwise,  "assessment/logistic_a2_stepwise.rds")
-write_rds(logistic_a3,           "assessment/logistic_a3.rds")
-write_rds(logistic_a3_stepwise,  "assessment/logistic_a3_stepwise.rds")
-write_rds(logistic_w1,           "assessment/logistic_w1.rds")
-write_rds(logistic_w1_stepwise,  "assessment/logistic_w1_stepwise.rds")
-write_rds(logistic_w2,           "assessment/logistic_w2.rds")
-write_rds(logistic_w2_stepwise,  "assessment/logistic_w2_stepwise.rds")
-write_rds(logistic_w3,           "assessment/logistic_w3.rds")
-write_rds(logistic_w3_stepwise,  "assessment/logistic_w3_stepwise.rds")
+write_rds(logistic_a1,              "assessment/logistic_a1.rds")
+write_rds(logistic_a1_stepwise,     "assessment/logistic_a1_stepwise.rds")
+write_rds(logistic_a2,              "assessment/logistic_a2.rds")
+write_rds(logistic_a2_stepwise,     "assessment/logistic_a2_stepwise.rds")
+write_rds(logistic_w1,              "assessment/logistic_w1.rds")
+write_rds(logistic_w1_stepwise,     "assessment/logistic_w1_stepwise.rds")
+write_rds(logistic_w2,              "assessment/logistic_w2.rds")
+write_rds(logistic_w2_stepwise,     "assessment/logistic_w2_stepwise.rds")
 
 # Remove models
-rm(logistic_a1,  logistic_a1_stepwise,
-   logistic_a2,  logistic_a2_stepwise,
-   logistic_a3,  logistic_a3_stepwise,
-   logistic_w1,  logistic_w1_stepwise,
-   logistic_w2,  logistic_w2_stepwise,
-   logistic_w3,  logistic_w3_stepwise)
+rm(logistic_a1, logistic_a1_stepwise,
+   logistic_a2, logistic_a2_stepwise,
+   logistic_w1, logistic_w1_stepwise,
+   logistic_w2, logistic_w2_stepwise)
 ```
 
 ### Step 5: Lasso regressions
@@ -250,7 +225,7 @@ par_grid <- expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
 # Set seed
 set.seed(685)
 
-# Lasso model w/o downsampling
+# a1 model w/o downsampling
 lasso_a1_train <- train(a1,
                         data      = training,
                         method    = "glmnet",
@@ -258,7 +233,7 @@ lasso_a1_train <- train(a1,
                         tuneGrid  = par_grid,
                         trControl = control.logloss)
 
-# Lasso model w/o downsampling
+# a2 model w/o downsampling
 lasso_a2_train <- train(a2,
                         data      = training,
                         method    = "glmnet",
@@ -266,15 +241,7 @@ lasso_a2_train <- train(a2,
                         tuneGrid  = par_grid,
                         trControl = control.logloss)
 
-# Lasso model w/o downsampling
-lasso_a3_train <- train(a3,
-                        data      = training,
-                        method    = "glmnet",
-                        metric    = "logLoss",
-                        tuneGrid  = par_grid,
-                        trControl = control.logloss)
-
-# Lasso model w/o downsampling
+# w1 model w/o downsampling
 lasso_w1_train <- train(w1,
                         data      = training,
                         method    = "glmnet",
@@ -282,16 +249,8 @@ lasso_w1_train <- train(w1,
                         tuneGrid  = par_grid,
                         trControl = control.logloss)
 
-# Lasso model w/o downsampling
+# w2 model w/o downsampling
 lasso_w2_train <- train(w2,
-                        data      = training,
-                        method    = "glmnet",
-                        metric    = "logLoss",
-                        tuneGrid  = par_grid,
-                        trControl = control.logloss)
-
-# Lasso model w/o downsampling
-lasso_w3_train <- train(w3,
                         data      = training,
                         method    = "glmnet",
                         metric    = "logLoss",
@@ -308,17 +267,14 @@ lasso_w3_train <- train(w3,
 #deviance(lasso_a2_logloss) + 2 * dim(testing.air.vars)[2]
 
 # Save models
-write_rds(lasso_a1_train,  "assessment/lasso_a1.rds")
-write_rds(lasso_a2_train,  "assessment/lasso_a2.rds")
-write_rds(lasso_a3_train,  "assessment/lasso_a3.rds")
-write_rds(lasso_w1_train,  "assessment/lasso_w1.rds")
-write_rds(lasso_w2_train,  "assessment/lasso_w2.rds")
-write_rds(lasso_w3_train,  "assessment/lasso_w3.rds")
+write_rds(lasso_a1_train,     "assessment/lasso_a1.rds")
+write_rds(lasso_a2_train,     "assessment/lasso_a2.rds")
+write_rds(lasso_w1_train,     "assessment/lasso_w1.rds")
+write_rds(lasso_w2_train,     "assessment/lasso_w2.rds")
 
 # Remove objects
-rm(lasso_a1_train,  lasso_a2_train,
-   lasso_a3_train,  lasso_w1_train,
-   lasso_w2_train,  lasso_w3_train)
+rm(lasso_a1_train, lasso_a2_train,
+   lasso_w1_train, lasso_w2_train)
 ```
 
 ```{r echo = `FALSE`}
@@ -328,7 +284,7 @@ par_grid <- expand.grid(alpha = 1, lambda = seq(1.5e-6, 1e-5, length.out = 6))
 # Set seed
 set.seed(685)
 
-# Lasso model w/ downsampling
+# a1 model w/ downsampling
 lasso_a1_ds_train <- train(a1,
                            data      = training,
                            method    = "glmnet",
@@ -336,7 +292,7 @@ lasso_a1_ds_train <- train(a1,
                            tuneGrid  = par_grid,
                            trControl = control.logloss.ds)
 
-# Lasso model w/ downsampling
+# a2 model w/ downsampling
 lasso_a2_ds_train <- train(a2,
                            data      = training,
                            method    = "glmnet",
@@ -344,15 +300,7 @@ lasso_a2_ds_train <- train(a2,
                            tuneGrid  = par_grid,
                            trControl = control.logloss.ds)
 
-# Lasso model w/ downsampling
-lasso_a3_ds_train <- train(a3,
-                           data      = training,
-                           method    = "glmnet",
-                           metric    = "logLoss",
-                           tuneGrid  = par_grid,
-                           trControl = control.logloss.ds)
-
-# Lasso model w/ downsampling
+# w1 model w/ downsampling
 lasso_w1_ds_train <- train(w1,
                            data      = training,
                            method    = "glmnet",
@@ -360,7 +308,7 @@ lasso_w1_ds_train <- train(w1,
                            tuneGrid  = par_grid,
                            trControl = control.logloss.ds)
 
-# Lasso model w/ downsampling
+# w2 model w/ downsampling
 lasso_w2_ds_train <- train(w2,
                            data      = training,
                            method    = "glmnet",
@@ -368,35 +316,15 @@ lasso_w2_ds_train <- train(w2,
                            tuneGrid  = par_grid,
                            trControl = control.logloss.ds)
 
-# Lasso model w/ downsampling
-lasso_w3_ds_train <- train(w3,
-                           data      = training,
-                           method    = "glmnet",
-                           metric    = "logLoss",
-                           tuneGrid  = par_grid,
-                           trControl = control.logloss.ds)
-
-## Run best fit lasso model
-#lasso_a2_logloss <- glmnet(x = testing.a2, y = testing.resp,
-#                           family = "binomial", alpha = 1,
-#                           lambda = lasso_a2_logloss_train$bestTune$lambda)
-
-## Calculate AIC
-#deviance(lasso_a1_logloss) + 2 * dim(testing.air.vars)[2]
-#deviance(lasso_a2_logloss) + 2 * dim(testing.air.vars)[2]
-
 # Save models
-write_rds(lasso_a1_ds_train,  "assessment/lasso_a1_ds.rds")
-write_rds(lasso_a2_ds_train,  "assessment/lasso_a2_ds.rds")
-write_rds(lasso_a3_ds_train,  "assessment/lasso_a3_ds.rds")
-write_rds(lasso_w1_ds_train,  "assessment/lasso_w1_ds.rds")
-write_rds(lasso_w2_ds_train,  "assessment/lasso_w2_ds.rds")
-write_rds(lasso_w3_ds_train,  "assessment/lasso_w3_ds.rds")
+write_rds(lasso_a1_ds_train,     "assessment/lasso_a1_ds.rds")
+write_rds(lasso_a2_ds_train,     "assessment/lasso_a2_ds.rds")
+write_rds(lasso_w1_ds_train,     "assessment/lasso_w1_ds.rds")
+write_rds(lasso_w2_ds_train,     "assessment/lasso_w2_ds.rds")
 
 # Remove objects
-rm(lasso_a1_ds_train,  lasso_a2_ds_train,
-   lasso_a3_ds_train,  lasso_w1_ds_train,
-   lasso_w2_ds_train,  lasso_w3_ds_train)
+rm(lasso_a1_ds_train, lasso_a2_ds_train,
+   lasso_w1_ds_train, lasso_w2_ds_train)
 ```
 
 ### Step 6: Ridge logistic regressions
@@ -410,7 +338,7 @@ par_grid <-  expand.grid(alpha = 0, lambda = seq(3.5e-7, 1.5e-5, length.out = 6)
 # Set seed
 set.seed(475)
 
-# Ridge model w/o downsampling
+# a1 model w/o downsampling
 ridge_a1_train <- train(a1,
                         data      = training,
                         method    = "glmnet",
@@ -418,7 +346,7 @@ ridge_a1_train <- train(a1,
                         tuneGrid  = par_grid,
                         trControl = control.logloss)
 
-# Ridge model w/o downsampling
+# a2 model w/o downsampling
 ridge_a2_train <- train(a2,
                         data      = training,
                         method    = "glmnet",
@@ -426,15 +354,7 @@ ridge_a2_train <- train(a2,
                         tuneGrid  = par_grid,
                         trControl = control.logloss)
 
-# Ridge model w/o downsampling
-ridge_a3_train <- train(a3,
-                        data      = training,
-                        method    = "glmnet",
-                        metric    = "logLoss",
-                        tuneGrid  = par_grid,
-                        trControl = control.logloss)
-
-# Ridge model w/o downsampling
+# w1 model w/o downsampling
 ridge_w1_train <- train(w1,
                         data      = training,
                         method    = "glmnet",
@@ -442,16 +362,8 @@ ridge_w1_train <- train(w1,
                         tuneGrid  = par_grid,
                         trControl = control.logloss)
 
-# Ridge model w/o downsampling
+# w2 model w/o downsampling
 ridge_w2_train <- train(w2,
-                        data      = training,
-                        method    = "glmnet",
-                        metric    = "logLoss",
-                        tuneGrid  = par_grid,
-                        trControl = control.logloss)
-
-# Ridge model w/o downsampling
-ridge_w3_train <- train(w3,
                         data      = training,
                         method    = "glmnet",
                         metric    = "logLoss",
@@ -468,17 +380,14 @@ ridge_w3_train <- train(w3,
 #deviance(ridge_a2_logloss) + 2 * dim(testing.air.vars)[2]
 
 # Save models
-write_rds(ridge_a1_train,  "assessment/ridge_a1.rds")
-write_rds(ridge_a2_train,  "assessment/ridge_a2.rds")
-write_rds(ridge_a3_train,  "assessment/ridge_a3.rds")
-write_rds(ridge_w1_train,  "assessment/ridge_w1.rds")
-write_rds(ridge_w2_train,  "assessment/ridge_w2.rds")
-write_rds(ridge_w3_train,  "assessment/ridge_w3.rds")
+write_rds(ridge_a1_train,        "assessment/ridge_a1.rds")
+write_rds(ridge_a2_train,        "assessment/ridge_a2.rds")
+write_rds(ridge_w1_train,        "assessment/ridge_w1.rds")
+write_rds(ridge_w2_train,        "assessment/ridge_w2.rds")
 
 # Remove objects
-rm(ridge_a1_train,  ridge_a2_train,
-   ridge_a3_train,  ridge_w1_train,
-   ridge_w2_train,  ridge_w3_train)
+rm(ridge_a1_train, ridge_a2_train,
+   ridge_w1_train, ridge_w2_train)
 ```
 
 ```{r echo = `FALSE`}
@@ -488,7 +397,7 @@ par_grid <-  expand.grid(alpha = 0, lambda = seq(3.5e-7, 1.5e-5, length.out = 6)
 # Set seed
 set.seed(475)
 
-# Ridge model w/ downsampling
+# a1 model w/ downsampling
 ridge_a1_ds_train <- train(a1,
                            data      = training,
                            method    = "glmnet",
@@ -496,7 +405,7 @@ ridge_a1_ds_train <- train(a1,
                            tuneGrid  = par_grid,
                            trControl = control.logloss.ds)
 
-# Ridge model w/ downsampling
+# a2 model w/ downsampling
 ridge_a2_ds_train <- train(a2,
                            data      = training,
                            method    = "glmnet",
@@ -504,15 +413,7 @@ ridge_a2_ds_train <- train(a2,
                            tuneGrid  = par_grid,
                            trControl = control.logloss.ds)
 
-# Ridge model w/ downsampling
-ridge_a3_ds_train <- train(a3,
-                           data      = training,
-                           method    = "glmnet",
-                           metric    = "logLoss",
-                           tuneGrid  = par_grid,
-                           trControl = control.logloss.ds)
-
-# Ridge model w/ downsampling
+# w1 model w/ downsampling
 ridge_w1_ds_train <- train(w1,
                            data      = training,
                            method    = "glmnet",
@@ -520,22 +421,13 @@ ridge_w1_ds_train <- train(w1,
                            tuneGrid  = par_grid,
                            trControl = control.logloss.ds)
 
-# Ridge model w/ downsampling
+# w2 model w/ downsampling
 ridge_w2_ds_train <- train(w2,
                            data      = training,
                            method    = "glmnet",
                            metric    = "logLoss",
                            tuneGrid  = par_grid,
                            trControl = control.logloss.ds)
-
-# Ridge model w/ downsampling
-ridge_w3_ds_train <- train(w3,
-                           data      = training,
-                           method    = "glmnet",
-                           metric    = "logLoss",
-                           tuneGrid  = par_grid,
-                           trControl = control.logloss.ds)
-
 
 ## Run best fit ridge model
 #ridge_a2_logloss <- glmnet(x = testing.a2, y = testing.resp,
@@ -547,17 +439,14 @@ ridge_w3_ds_train <- train(w3,
 #deviance(ridge_a2_logloss) + 2 * dim(testing.air.vars)[2]
 
 # Save models
-write_rds(ridge_a1_ds_train,  "assessment/ridge_a1_ds.rds")
-write_rds(ridge_a2_ds_train,  "assessment/ridge_a2_ds.rds")
-write_rds(ridge_a3_ds_train,  "assessment/ridge_a3_ds.rds")
-write_rds(ridge_w1_ds_train,  "assessment/ridge_w1_ds.rds")
-write_rds(ridge_w2_ds_train,  "assessment/ridge_w2_ds.rds")
-write_rds(ridge_w3_ds_train,  "assessment/ridge_w3_ds.rds")
+write_rds(ridge_a1_ds_train,    "assessment/ridge_a1_ds.rds")
+write_rds(ridge_a2_ds_train,    "assessment/ridge_a2_ds.rds")
+write_rds(ridge_w1_ds_train,    "assessment/ridge_w1_ds.rds")
+write_rds(ridge_w2_ds_train,    "assessment/ridge_w2_ds.rds")
 
 # Remove objects
-rm(ridge_a1_ds_train,  ridge_a2_ds_train,
-   ridge_a3_ds_train,  ridge_w1_ds_train,
-   ridge_w2_ds_train,  ridge_w3_ds_train)
+rm(ridge_a1_ds_train, ridge_a2_ds_train,
+   ridge_w1_ds_train, ridge_w2_ds_train)
 ```
 
 ######################################

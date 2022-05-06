@@ -1,47 +1,23 @@
 ---
 title: "combine datasets"
 author: "SPT"
-date: "2021_08_16"
+date: "2022_05_06"
 output: github_document
 ---
 
 ### Background
 
-This file combines fishkill data from Minnesota (Phelps et al. 2019) and Wisconsin (Till et al. 2019) with concurrent (2003-2014) and future (2041-2059; 2081-2099) air and water temperature estimates. First, each fishkill event (2003-2014) was attributed to a major cause (anthropogenic, infectious, summerkill, unknown, winterkill) and associated with a specific waterbody. Next, I obtained concurrent air and water temperature estimates (2003-2014) from PRISM (~8 km resolution) and Winslow et al. (2017), respectively, for each waterbody. I then obtained future air and water temperature estimates (2041-2059; 2081-2099) from the NOAA GFDL CM3 model (~8 km resolution) and Winslow et al. (2017), respectively. Both of these temperature estimates are based on RCP 8.5 projections. Lastly, these datasets also include precipitation, snowfall, and 2010 census data. After running this script, the historical (df.historical) and future (df.future) datasets are ready for modeling (02_prepare_models.Rmd).
-
-### Folders in data/raw:
-
-- `census_data`:                   Data from US Census Bureau (2010)
-- `lake_shapes`:                   GIS outlines of lake shapes
-- `PRISM_precip`:                  Precipitation estimates (http://prism.oregonstate.edu)
-- `temp_air`:                      Historical and future air temperature estimates from NOAA and PRISM (http://prism.oregonstate.edu)
-- `wisconsin_outline`:             GIS outlines of state
-
-### Files in data/raw:
-
-- `FishKill_Master.csv`:           Minnesota fishkill data from Phelps et al. (2019)
-- `fish_kill_data_10_24_2018.csv`: Wisconsin fishkill data from Till et al. (2019)
-- `Site_ID.csv`:                   Waterbody information for most of the upper midwest
-- `WI_Site.csv`:                   Waterbody information for Wisconsin
-- `temp_water.csv`:                Historical water temperature data (1980-2013) for upper midwest lakes from Winslow et al. (2017)
-- `prism_1.csv`:                   Historical air temperature data (2003-2013) for the upper midwest from PRISM
-- `prism_2.csv`:                   Historical air temperature data (2003-2013) for the upper midwest from PRISM
-- `ACCESS_thermal_metrics.tsv`:    Future water temperature data (2041-2059; 2081-2099)
-- `localities.csv`:                Coordinates for waterbodies in the upper midwest
-- `mme_temp_missing.kml`:          Locations of waterbodies that had missing coordinates
-- `2010_census.csv`:               Data from US Census Bata (2010)
+This file combines fishkill data from Minnesota (Phelps et al. 2019) and Wisconsin (Till et al. 2019) with concurrent (2003-2014) and future (2041-2059; 2081-2099) air and water temperature estimates. First, each fishkill event (2003-2014) was attributed to a major cause (anthropogenic, infectious, summerkill, unknown, winterkill) and associated with a specific waterbody. Next, I obtained concurrent air and water temperature estimates (2003-2014) from PRISM (~8 km resolution) and Winslow et al. (2017), respectively, for each waterbody. I then obtained future air and water temperature estimates (2041-2059; 2081-2099) from the NOAA GFDL CM3 model (~8 km resolution) and Winslow et al. (2017), respectively. Both of these temperature estimates are based on RCP 8.5 projections. Lastly, these datasets also include precipitation, snowfall, 2010 census data, EPA ecoregions, Secchi depth, and lake surface area. After running this script, the historical (df.historical) and future (df.future) datasets are ready for modeling (02_prepare_models.Rmd).
 
 ### Step 1: Load packages and data
 
-Note that the `lakeattribute` package requires a remote install.
-
-```{r echo = `FALSE`}
+```{r, echo = `FALSE`}
 #remotes::install_github("USGS-R/lakeattributes")
 
 # Load packages
 library(plyr)
 library(remotes)
-library(lakeattributes)
+library(lakeattributes) # requires remote install above
 library(data.table)
 library(tidyverse)
 library(sp)
@@ -59,6 +35,8 @@ library(ncdf4)
 library(anchors)
 library(maptools)
 library(stringr)
+library(terra)
+library(PBSmapping)
 
 # Reset global environment
 rm(list = ls())
@@ -67,21 +45,42 @@ rm(list = ls())
 setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp")
 
 # Load files
-mn.fish      <- read.csv(file = "data/raw/Fishkill_Master.csv", head = TRUE, sep = ",")
-wi.fish      <- read.csv(file = "data/raw/fish_kill_data_10_24_2018.csv", head = TRUE, sep = ",")
-wi.site      <- read.csv(file = "data/raw/WI_Site.csv", head = TRUE, sep = ",")
-site.id      <- read.csv(file = "data/raw/Site_ID.csv", head = TRUE, sep = ",")
-hist.water   <- read.csv(file = "data/raw/temp_water.csv", head = TRUE, sep = ",")
-hist.air.1   <- read.csv(file = "data/raw/prism_1.csv", head = TRUE, sep = ",")
-hist.air.2   <- read.csv(file = "data/raw/prism_2.csv", head = TRUE, sep = ",")
-census       <- read.csv(file = "data/raw/2010_census.csv", head = TRUE, sep = ",")
+mn.fish      <- read.csv(file = "data/raw/fishkills/fishkills_mn.csv", head = TRUE, sep = ",")
+wi.fish      <- read.csv(file = "data/raw/fishkills/fishkills_wi.csv", head = TRUE, sep = ",")
+wi.site      <- read.csv(file = "data/raw/sites/WI_Site.csv", head = TRUE, sep = ",")
+site.id      <- read.csv(file = "data/raw/sites/Site_ID.csv", head = TRUE, sep = ",")
+hist.water   <- read.csv(file = "data/raw/temps/temp_water.csv", head = TRUE, sep = ",")
+hist.air.1   <- read.csv(file = "data/raw/temps/prism_1.csv", head = TRUE, sep = ",")
+hist.air.2   <- read.csv(file = "data/raw/temps/prism_2.csv", head = TRUE, sep = ",")
+census       <- read.csv(file = "data/raw/census/2010_census.csv", head = TRUE, sep = ",")
+
+# Function to get US county and state
+latlong2county <- function(pointsDF) {
+    # Prepare SpatialPolygons object with one SpatialPolygon
+    # per county
+    counties <- map('county', fill=TRUE, col="transparent", plot=FALSE)
+    IDs <- sapply(strsplit(counties$names, ":"), function(x) x[1])
+    counties_sp <- map2SpatialPolygons(counties, IDs=IDs,
+                     proj4string=CRS("+proj=longlat +datum=WGS84"))
+
+    # Convert pointsDF to a SpatialPoints object 
+    pointsSP <- SpatialPoints(pointsDF, 
+                    proj4string=CRS("+proj=longlat +datum=WGS84"))
+
+    # Use 'over' to get _indices_ of the Polygons object containing each point 
+    indices <- over(pointsSP, counties_sp)
+
+    # Return the county names of the Polygons object containing each point
+    countyNames <- sapply(counties_sp@polygons, function(x) x@ID)
+    countyNames[indices]
+}
 ```
 
 ### Step 2: Add Minnesota fishkill data
 
-This reformats the MN fishkill dataset. First, this combines fishkills that occurred in the same waterbody and month into a single event. I manually verified each of these events so that all affected taxa were accounted for and the most frequent cause was considered the cause of the combined event. All affected taxa are organized by family and, if possible, species. Second, this associates each fishkill with the nearest waterbody centroid using the unique identifier "site_id". Till et al., (2019) used "WBIC" as the unique identifier, however this idenfitier is state-specific to Wisconsin and "site_id", from the National Hydrologic Database (NHD), can be used across both states. Third, this calculates the species and family richness for each fishkill event.
+This reformats the MN fishkill dataset. First, this combines fishkills that occurred in the same waterbody and month into a single event. I manually verified each of these events so that all affected taxa were accounted for and the most frequent cause was considered the cause of the combined event. All affected taxa are organized by family and, if possible, species. Second, this associates each fishkill with the nearest waterbody centroid using the unique identifier "site_id". Till et al., (2019) used "WBIC" as the unique identifier, however this identifier is state-specific to Wisconsin and "site_id", from the National Hydrologic Database (NHD), can be used across both states. Third, this calculates the species and family richness for each fishkill event.
 
-```{r echo = `FALSE`}
+```{r, echo = `FALSE`}
 # Merges waterbody information, reformats columns, and removes locations without coordinates
 site.id <- site.id %>%
   left_join(., wi.site, by = "site_id", all = TRUE) %>%
@@ -117,9 +116,9 @@ mn.fish <- mn.fish %>%
          waterbody.name = waterbody,
          lat            = y,
          long           = x,
-         cause.group = final.diagnosis) %>%
+         cause.detail   = final.diagnosis) %>%
   mutate(dummy = 1,
-         cause.groups = cause.group) %>%
+         cause.groups = cause.detail) %>%
   spread(as.numeric(cause.groups), dummy, fill = 0) %>%
   dplyr::rename(unknown = V1) %>% # unknown diagnoses (blank cells) were moved to V1
   mutate(
@@ -149,7 +148,7 @@ mn.fish <- mn.fish %>%
                      "yellow.perch", "muskies", "bass", "stonecat",
                      "gizzard.gizzard.shad", "rockbass", "sauger", "gar",
                      "whitefish", "unknown", "summerkill", "winterkill",
-                     "anthropogenic", "infectious", "cause.group"))
+                     "anthropogenic", "infectious", "cause.detail"))
 
 # Adds localities of the centroid of waterbodies for events that had a location name but no coordinates These coordinates were found in Google Earth and saved as "data/raw/mme_missing.kml". For transparency, below are each of the events, location names, and coordinates. I was unable to find coordinates for all of the missing locations. The modified MN dataset is exported at the end of these steps to see which do and do not have coordinates. Note that 1) event s2005163 is Rice Lake, Faribault County, but there are 2 Rice Lakes in that county via Google Earth and 2) the coordinates were changed for Long Lake, Otter Tail County.
 mn.fish <- mn.fish %>%
@@ -189,10 +188,7 @@ mn.fish <- mn.fish %>%
     long = ifelse(event == "s2009170l", "-92.123294", long),
     # pl2011248; Long Lake, Otter Tail County, MN
     lat  = ifelse(event == "pl2011248", "46.410217", lat),
-    long = ifelse(event == "pl2011248", "-95.549014", long))
-
-# Reformats columns for matching GPS coordinates of locations and waterbody centroids, and removes locations without coordintates because the function that finds the distance between GPS coordinates doesn't work with NAs.
-mn.fish <- mn.fish %>%
+    long = ifelse(event == "pl2011248", "-95.549014", long)) %>%
   mutate(lat  = as.numeric(lat), # NAs are empty cells
          long = as.numeric(long)) %>%
   filter(!lat  == "NA") %>%
@@ -249,7 +245,7 @@ mn.fish.1 <- mn.fish.1 %>%
     catostomidae  = ifelse(event == "pl2013155(s2013141)", 0, catostomidae),
     sciaenidae    = ifelse(event == "pl2013155(s2013141)", 0, sciaenidae),
     lepisosteidae = ifelse(event == "pl2013155(s2013141)", 0, lepisosteidae))
-    
+
 # Fix mn.fish.2
 mn.fish.2 <- mn.fish.2 %>%
   mutate(
@@ -298,26 +294,31 @@ mn.fish.2 <- mn.fish.2 %>%
   filter(!event == "pl2007101") %>%
   filter(!event == "s2011088")
 
-# Calculate number of columnaris events in MN
-#test <- mn.fish.1 %>%
-#  merge(., mn.fish.2, all = TRUE) %>%
-#  filter(cause.group == "columnaris" | cause.group == "columnaris disease and aermonas septicemia)" | cause.group == #"columnaris with parasitic infection" | cause.group == "possible columnaris" | cause.group == "environmental stress with #columnaris")
-
 # Sums the number of fish families and species for each event. The taxonomic resolution of observations varies, and this code is conservative. It considers all observations that may have been of the same species as a single species (e.g., bass + largemouth bass = 1 species). To do this, I sum the columns of unique species, then use ifelse statements to only add one species for coarse taxonomic categorizations.
 mn.fish <- mn.fish.1 %>%
   merge(., mn.fish.2, all = TRUE) %>%
   dplyr::rename(gizzard.shad = gizzard.gizzard.shad) %>%
-  mutate(cause.group = NULL) %>%
   mutate(month = as.numeric(month),
          clupeidae = ifelse(gizzard.shad >= 1, 1, 0)) %>% # add missing family column
+  # Reorganize columns 
+  dplyr::select(., c(event, site, site_id, gnis_nm, lat, long, wbic,
+                     month, year, waterbody.name, county, state,
+                     centrarchidae, clupeidae, percidae, esocidae, ictaluridae,
+                     cyprinidae, salmonidae, osmeridae, catostomidae, sciaenidae,
+                     lepisosteidae, bullhead, brown.trout, largemouth.bass,
+                     smallmouth.bass,  minnow, cisco, channel.catfish, freshwater.drum,
+                     northern.pike, rainbow.smelt, walleye, carp, crappie, trout,
+                     sunfish, white.sucker, yellow.perch, muskies, bass, stonecat,
+                     gizzard.shad, rockbass, sauger, gar, whitefish, unknown, summerkill,
+                     winterkill, anthropogenic, infectious, cause.detail)) %>%
   mutate_at(c(13:53), as.numeric) %>% # convert families and species to numeric
-  mutate(fish_families = rowSums(.[, c(13:22, 53)], na.rm = TRUE), # sum families
-         fish_species  = rowSums(.[, c(23, 27:34 ,38:40, 42:47)], na.rm = TRUE), # sum species (exceptions below)
+  mutate(fish_families = rowSums(.[, c(13:23)], na.rm = TRUE), # sum families
+         fish_species  = rowSums(.[, c(24, 28:41, 43:48)], na.rm = TRUE), # sum species (exceptions of vague taxa below)
          fish_species  = ifelse(brown.trout >= 1 | trout >= 1 & !is.na(brown.trout) & !is.na(trout), fish_species + 1, fish_species),
          fish_species  = ifelse(largemouth.bass >= 1 | smallmouth.bass >= 1 | bass >= 1 | crappie >= 1 | sunfish >= 1 & !is.na(largemouth.bass) & !is.na(smallmouth.bass) & !is.na(bass) & !is.na(brown.trout) & !is.na(crappie) & !is.na(sunfish), fish_species + 1, fish_species)) %>%
   mutate_all(na_if, "") %>% # replaces empty cells with NAs
-  mutate_at(., vars(c(13:22, 53)), list(~ ifelse(fish_families == 0, NA, .))) %>% # ensures that, if no fish families were observed, NAs are in all the species columns to reduce the number of false negatives
-  mutate_at(., vars(c(23, 27:34 ,38:40, 42:47)), list(~ ifelse(fish_species == 0, NA, .))) %>% # ensures that, if no fish species were observed, NAs are in all the families columns to reduce the number of false negatives
+  mutate_at(., vars(c(13:23)), list(~ ifelse(fish_families == 0, NA, .))) %>% # ensures that, if no fish families were observed, NAs are in all the species columns to reduce the number of false negatives
+  mutate_at(., vars(c(24:48)), list(~ ifelse(fish_species == 0, NA, .))) %>% # ensures that, if no fish species were observed, NAs are in all the families columns to reduce the number of false negatives
   mutate(fish_families = ifelse(fish_families == 0, NA, fish_families))
 
 # Removes unnecessary dataframes
@@ -328,9 +329,9 @@ rm(mn.fish.1, mn.fish.2,
 
 ### Step 3: Add Wisconsin fishkill data
 
-This reformats the WI fishkill dataset. First, this combines fishkills that occurred in the same waterbody and month into a single event as above. All taxa are organized by family and, if possible, species. Second, this associates each fishkill event with the centroid of the nearest waterbody as above. Note that a truncated version of "site_id" is already in the original WI fishkill dataset, but I re-add the full version for consistency with the MN data. Third, this calculates the species and family richness for each fishkill event.
+This reformats the WI fishkill dataset. First, this combines fishkills that occurred in the same waterbody and month into a single event as above. All taxa are organized by family and, if possible, species. Second, this associates each fishkill event with the centroid of the nearest waterbody as above. Note that a truncated version of "site_id" is already in the original WI fishkill dataset, but I add the full version for consistency with the MN data. Third, this calculates species and family richness for each fishkill event.
 
-```{r echo = `FALSE`}
+```{r, echo = `FALSE`}
 # Save species and families
 taxa <- c("sunnies", "bluegill", "crappie", "bass", "bullhead", "suckerfish",
           "trout", "gizzard.shad", "round.goby", "cisco", "pike", "snail", "muskies",
@@ -338,8 +339,6 @@ taxa <- c("sunnies", "bluegill", "crappie", "bass", "bullhead", "suckerfish",
           "minnow", "bigmouth.buffalo", "pumpkinseed", "drum", "darter", "dace", "chub",
           "crayfish", "redhorse", "frogs", "sunfish", "golden.shiner", "blowfin", "dogfish",
           "sturgeon", "fish_species")
-
-colnames(wi.fish)
 
 # Removes fishkill events outside of the study period, renames columns, and expands final diagnoses for fishkills into separate columns
 wi.fish <- wi.fish %>%
@@ -349,10 +348,10 @@ wi.fish <- wi.fish %>%
   rename_all(tolower) %>%
   mutate_all(tolower) %>%
   dplyr::filter(date > "2003-01-01", date < "2013-12-31") %>%  # changed to match timespan of Phelps, removed last 6 months
-  dplyr::rename(#month        = investigation.start.month,
-                event        = fishkill.inv.seq.no,
+  dplyr::rename(event        = fishkill.inv.seq.no,
                 cause.group  = cause.category.4,
-                fish_species = x..fish.species.confirmed) %>%
+                fish_species = x..fish.species.confirmed,
+                cause.detail = detail.cause.type) %>%
   mutate(event = as.integer(event),
          dummy = 1,
          cause.groups = cause.group) %>% 
@@ -378,24 +377,24 @@ wi.fish <- wi.fish %>%
          sciaenidae = ifelse(drum >= 1 | sheapshead >= 1, 1, 0)) %>%
   dplyr::select(., -c(1, 4, 6, 7, 9:11, 13:17, 19:21, 33, 49, 51, 57:59, 64)) %>% # removes unneccessary columns
   merge(., site.id, by = "wbic", all.x = TRUE) %>%
-  mutate_at(c(4, 5, 40), as.character) # convert event, month, and year to character
+  mutate_at(c("event", "year", "month"), as.character) # convert event, month, and year to character
 
 # Manually changes values for events where at least one taxa was observed, but there are NAs in the remaining species and family columns. These changes ensure that all entries have either presence or absence (0 or 1) if at least one taxa was documented, and all entries have NAs if no taxa were reported.
-wi.fish[wi.fish$event == 64,   c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 64,   c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 132,  c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 132,  c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 3321, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 3321, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 3284, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 3284, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 2262, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 2262, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 2259, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 2259, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 2160, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 2160, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 2033, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 2033, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 1722, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 1722, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 1508, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 1508, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 1455, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 1455, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 1399, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 1399, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 1269, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 1269, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 1136, c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 1136, c(6:17, 19:37, 46:59)])] = 0
-wi.fish[wi.fish$event == 107,  c(6:17, 19:37, 46:59)][is.na(wi.fish[wi.fish$event == 107,  c(6:17, 19:37, 46:59)])] = 0
+wi.fish[wi.fish$event == 64,   c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 64,   c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 132,  c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 132,  c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 3321, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 3321, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 3284, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 3284, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 2262, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 2262, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 2259, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 2259, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 2160, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 2160, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 2033, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 2033, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 1722, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 1722, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 1508, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 1508, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 1455, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 1455, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 1399, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 1399, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 1269, c(7:38, 47:60)][is.na(wi.fish[wi.fish$event == 1269, c(7:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 1136, c(8:17, 19:32, 35:38, 47:60)][is.na(wi.fish[wi.fish$event == 1136, c(8:17, 19:32, 35:38, 47:60)])] = 0
+wi.fish[wi.fish$event == 107,  c(8:17, 19:32, 35:38, 47:60)][is.na(wi.fish[wi.fish$event == 107,  c(8:17, 19:32, 35:38, 47:60)])] = 0
 
 # Subsets events that occurred in the same waterbody and month. To ensure that all taxa and causes are accounted for (e.g., different species and/or causes for combined events), I subset which events occurred in unique waterbodies and months (wi.fish.1), and which events occurred in the same waterbodies and months (wi.fish.2). I use the latter to combine duplicate events.
 
@@ -411,17 +410,17 @@ wi.fish.2 <- wi.fish %>%
   filter(n() != 1) %>%
   arrange(., wbic, year, month)
 
-# Creates columns for the combination of events in the same month and waterbody, and designates which columns (species and family) to combine. This tep ensures that all taxa are accounted for in duplicate events.
+# Creates columns for the combination of events in the same month and waterbody, and designates which columns (species and family) to combine. This step ensures that all taxa are accounted for in duplicate events.
 wi.columns    = c("wbic", "year", "month")
-wi.duplicates = c("sunnies", "bluegill", "crappie",
+wi.duplicates = c("bluegill", "crappie",
                   "bass", "bullhead", "suckerfish",
                   "trout", "gizzard.shad", "round.goby",
-                  "cisco", "pike", "muskies", "walleye",
+                  "cisco", "pike", "walleye",
                   "carp", "sheapshead", "perch", "catfish",
                   "sculpin", "stickleback", "minnow",
                   "bigmouth.buffalo", "pumpkinseed",
                   "drum", "darter", "dace", "chub",
-                  "redhorse", "sunfish", "golden.shiner",
+                  "golden.shiner",
                   "blowfin", "dogfish", "sturgeon",
                   "acipenseridae", "amiidae", "catostomidae",
                   "centrarchidae", "cottoidae", "clupeidae",
@@ -446,12 +445,12 @@ wi.fish.2 <- wi.fish.2 %>%
 wi.fish <- wi.fish.1 %>%
   merge(., wi.fish.2, all = TRUE) %>%
   mutate(month = as.numeric(month),
-         fish_families = rowSums(.[, c(47:60)]), # sum families
-         fish_species  = rowSums(.[, c(11:38)]), # sum species (exceptions below)
-         fish_species = ifelse(sunnies >= 1 | bluegill >= 1 | crappie >= 1 | bass >= 1 & !is.na(sunnies) & !is.na(bluegill) & !is.na(crappie) & !is.na(bass), (fish_species + 1), fish_species)) %>%
+         fish_families = rowSums(.[, c(43:56)]), # sum families
+         fish_species  = rowSums(.[, c(10:34)]), # sum species (exceptions below)
+         fish_species = ifelse(bluegill >= 1 | crappie >= 1 | bass >= 1 & !is.na(bluegill) & !is.na(crappie) & !is.na(bass), (fish_species + 1), fish_species)) %>%
   mutate_all(na_if,"") %>% # replaces empty cells with NAs
-  mutate_at(., vars(c(47:60)), list(~ ifelse(fish_families == 0, NA, .))) %>% # ensures that, if no fish families were observed, NAs are in all the species columns to reduce the number of false negatives
-  mutate_at(., vars(c(11:38)), list(~ ifelse(fish_species == 0, NA, .))) %>% # ensures that, if no fish species were observed, NAs are in all the families columns to reduce the number of false negatives
+  mutate_at(., vars(c(43:56)), list(~ ifelse(fish_families == 0, NA, .))) %>% # ensures that, if no fish families were observed, NAs are in all the species columns to reduce the number of false negatives
+  mutate_at(., vars(c(10:34)), list(~ ifelse(fish_species == 0, NA, .))) %>% # ensures that, if no fish species were observed, NAs are in all the families columns to reduce the number of false negatives
   mutate(fish_families = ifelse(fish_families == 0, NA, fish_families),
          fish_species  = ifelse(fish_species == 0, NA, fish_species)) %>%
   filter(!lat  == "NA") %>%
@@ -460,12 +459,6 @@ wi.fish <- wi.fish.1 %>%
 # Removes unnecessary dataframes
 rm(wi.fish.1, wi.fish.2, wi.fish.3,
    wi.columns, wi.duplicates)
-
-## Number of columnaris events for WI
-#test <- wi.fish %>%
-#  mutate_all(tolower) %>%
-#  rename_all(tolower) %>%
-#  filter(detail.cause.type == "columnaris")
 ```
 
 ### Step 4: Combine fishkill datasets
@@ -491,10 +484,8 @@ fish <- mn.fish %>%
   mutate(year      = as.numeric(year),
          cold_temp = ifelse(trout >= 1 | brown.trout >= 1 & !is.na(trout) & !is.na(brown.trout), 1, 0), # Cold in Lyons et al., 2009
          cool_temp = ifelse(northern.pike >= 1 | walleye >= 1 | white.sucker >= 1 | yellow.perch >= 1 | chub >= 1 | dace >= 1 | yellow.perch >= 1 | stickleback >= 1 & !is.na(northern.pike) & !is.na(walleye) & !is.na(white.sucker) & !is.na(yellow.perch) & !is.na(chub) & !is.na(dace) & !is.na(yellow.perch) & !is.na(stickleback), 1, 0), # Trans in Lyons et al., 2019
-         warm_temp = ifelse(bullhead >= 1 | largemouth.bass >= 1 | smallmouth.bass >= 1 | channel.catfish >= 1 | freshwater.drum >= 1 | redhorse >= 1 | sunfish >= 1 | bass >= 1 | freshwater.drum >= 1 | stonecat >= 1 | drum >= 1 | rockbass >= 1 | gar >= 1 | gizzard.shad >= 1 | sheapshead >= 1 | catfish >= 1 | bigmouth.buffalo >= 1 | pumpkinseed >= 1 | golden.shiner >= 1 | blowfin >= 1 | dogfish >= 1 | minnow >= 1 | darter >= 1 | perch >= 1 | suckerfish >= 1 | crappie >= 1 & !is.na(bullhead) & !is.na(largemouth.bass) & !is.na(smallmouth.bass) & !is.na(channel.catfish) & !is.na(freshwater.drum) & !is.na(redhorse) & !is.na(sunfish) & !is.na(bass) & !is.na(freshwater.drum) & !is.na(stonecat) & !is.na(drum) & !is.na(rockbass) & !is.na(gar) & !is.na(gizzard.shad) & !is.na(sheapshead) & !is.na(catfish) & !is.na(bigmouth.buffalo) & !is.na(pumpkinseed) & !is.na(golden.shiner) & !is.na(blowfin) & !is.na(dogfish) & !is.na(minnow) & !is.na(darter) & !is.na(perch) & !is.na(suckerfish) & !is.na(crappie), 1, 0), # Warm in Lyons et al., 2019
-         unknown_temp = ifelse(cisco >= 1 | rainbow.smelt >= 1 | muskies >= 1 | sauger >= 1 | whitefish >= 1 | sturgeon >= 1 | round.goby >= 1 & !is.na(cisco) & !is.na(rainbow.smelt) & !is.na(muskies) & !is.na(sauger) & !is.na(whitefish) & !is.na(sturgeon) & !is.na(round.goby), 1, 0)) %>%
-  dplyr::select(., -c(10, 21:31, 42:77)) %>% # removes fish species
-  mutate_at(c(12:29, 31:39), ~replace(., is.na(.), 0)) # replaces NAs with 0s for all species/family observations, temperature categories, and fishkill causes
+         warm_temp = ifelse(bullhead >= 1 | largemouth.bass >= 1 | smallmouth.bass >= 1 | channel.catfish >= 1 | freshwater.drum >= 1 | sunfish >= 1 | bass >= 1 | freshwater.drum >= 1 | stonecat >= 1 | drum >= 1 | rockbass >= 1 | gar >= 1 | gizzard.shad >= 1 | sheapshead >= 1 | catfish >= 1 | bigmouth.buffalo >= 1 | pumpkinseed >= 1 | golden.shiner >= 1 | blowfin >= 1 | dogfish >= 1 | minnow >= 1 | darter >= 1 | perch >= 1 | suckerfish >= 1 | crappie >= 1 & !is.na(bullhead) & !is.na(largemouth.bass) & !is.na(smallmouth.bass) & !is.na(channel.catfish) & !is.na(freshwater.drum) & !is.na(sunfish) & !is.na(bass) & !is.na(freshwater.drum) & !is.na(stonecat) & !is.na(drum) & !is.na(rockbass) & !is.na(gar) & !is.na(gizzard.shad) & !is.na(sheapshead) & !is.na(catfish) & !is.na(bigmouth.buffalo) & !is.na(pumpkinseed) & !is.na(golden.shiner) & !is.na(blowfin) & !is.na(dogfish) & !is.na(minnow) & !is.na(darter) & !is.na(perch) & !is.na(suckerfish) & !is.na(crappie), 1, 0), # Warm in Lyons et al., 2019
+         unknown_temp = ifelse(cisco >= 1 | rainbow.smelt >= 1 | muskies >= 1 | sauger >= 1 | whitefish >= 1 | sturgeon >= 1 | round.goby >= 1 & !is.na(cisco) & !is.na(rainbow.smelt) & !is.na(muskies) & !is.na(sauger) & !is.na(whitefish) & !is.na(sturgeon) & !is.na(round.goby), 1, 0))
 
 # Removes unnecessary dataframes
 rm(mn.fish, wi.fish)
@@ -609,8 +600,7 @@ hist.water.month <- hist.water.month %>%
 df.historical <- hist.water.month %>%
   dplyr::select(., -c("date")) %>% # removes date column used for monthly water temperature calculations
   left_join(hist.water.annual, by = c("year", "site_id")) %>%
-  merge(., fish, by = c("year", "month", "site_id"), all = TRUE) %>%
-  dplyr::select(., -c("site", "wbic", "date")) # removes unnecessary columns
+  merge(., fish, by = c("year", "month", "site_id"), all = TRUE)
 
 # Remove unnecessary dataframes
 rm(hist.water.annual, hist.water.month,
@@ -619,7 +609,7 @@ rm(hist.water.annual, hist.water.month,
 
 ### Step 6a: Add air temperature data (NOAA) to historical dataset
 
-This was my first attempt at obtaining recent air temperature data (2003-2014). This dataset includes daily air temperature data for all Minnesota and Wisconsin weather stations from NOAA (https://www.ncdc.noaa.gov/cdo-web/search?datasetid=GHCND). However, there are many missing data for both states, and so I decided to use air temperature estimates from PRISM instead (Step 7b). This is all hashed out for a rainy day. For this particular step, I first merged all air temperature data using BASH. I then reformatted the date columns across datasets and calculated the monthly and annual averages of maximum, mean, and minimum air temperatures. Weather stations were then associated with the nearest waterbody centroid.
+This was my first attempt at obtaining historical air temperature data (2003-2014). This dataset includes daily air temperature data for all Minnesota and Wisconsin weather stations from NOAA (https://www.ncdc.noaa.gov/cdo-web/search?datasetid=GHCND). However, there are many missing data for both states, and so I decided to use air temperature estimates from PRISM instead (Step 7b). This is all hashed out but retained in case anyone finds it helpful. For this particular step, I first merged all air temperature data using BASH. I then reformatted the date columns across datasets and calculated the monthly and annual averages of maximum, mean, and minimum air temperatures. Weather stations were then associated with the nearest waterbody centroid.
 
 ```{bash eval = `FALSE`}
 #cd /Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/data/raw/temp
@@ -810,7 +800,7 @@ This was my first attempt at obtaining recent air temperature data (2003-2014). 
 ### Step 6b: Add air temperature (PRISM) to historical dataset
 
 This reformats historical air temperature data (2003-2013) from PRISM (http://www.prism.oregonstate.edu/explorer/bulk.php). To acquire these data, I exported the coordinates and unique indentifiers for each waterbody (site_id) as "localities.csv". First, because the PRISM interface only works with 500 rows at a time,  I manually split "localities.csv" into separate csv files located at "data/raw/localities/localities_#.csv). The files that were returned from these queries are located at
-"data/raw/temp_air/2003_prism/PRISM_tmean_stable_4km_200301_201312_#.csv". Second, I manually merged these files into "data/raw/prism_1.csv" and "data/raw/prism_2.csv". This required two files because Excel doesn't enjoy files with >1,000,000 rows. I will eventually write some BASH code that does the manual steps above.
+"data/raw/temp_air/2003_prism/PRISM_tmean_stable_4km_200301_201312_#.csv". Second, I manually merged these files into "data/raw/prism_1.csv" and "data/raw/prism_2.csv". This required two files because Excel doesn't enjoy files with >1,000,000 rows.
 
 ```{r echo = `FALSE`}
 # Subset unqiue sites from Winslow et al. (2017)
@@ -834,7 +824,7 @@ localities$id <- c(1:10774)
 hist.air.1 <- na.omit(hist.air.1)
 hist.air.2 <- na.omit(hist.air.2)
 
-# Merge dataframes and remove old dataframes to save RAM
+# Merge dataframes to save RAM
 hist.air <- hist.air.1 %>%
   full_join(., hist.air.2) %>%
   rename_all(tolower) %>%
@@ -900,17 +890,17 @@ rm(hist.water, hist.air,
    air.pca.prop)
 ```
 
-### Step 7: Add geographic, census, and ecoregion to historical dataset
+### Step 7: Add geographic, census, and ecoregion data to historical dataset
 
-This adds geographic (county, state), 2010 US census, and ecoregion data to the historical dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody locatlities to determine which ecoregion polygon they were in. Lastly, I associated each waterbody with a single set of geographic coordinates because there are numerous "site_id" identifiers for a single waterbody.
+This adds geographic (county, state), 2010 US census, and ecoregion data to the historical dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody localities to determine encompassing ecoregion polygons.
 
 ```{r echo = `FALSE`}
 # Set working directory
 setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/data/raw")
 
 # Load census data
-census.wi <- readOGR(dsn = path.expand("census_data"), layer = 'tabblock2010_55_pophu')
-census.mn <- readOGR(dsn = path.expand("census_data"), layer = 'tabblock2010_27_pophu')
+census.wi <- readOGR(dsn = path.expand("census"), layer = 'tabblock2010_55_pophu')
+census.mn <- readOGR(dsn = path.expand("census"), layer = 'tabblock2010_27_pophu')
 
 # Reformat WI census data
 census.wi <- coordinates(census.wi) %>%
@@ -994,7 +984,7 @@ df.historical <- df.historical %>%
   left_join(., ecoregions, by = c("id")) %>%
   subset(., !is.na(state)) %>%
   mutate(l3_code = substr(.$l4_code, 1, 2)) %>%
-  mutate_at(c(35:61), ~replace(., is.na(.), 0)) %>%
+  #mutate_at(c(35:61), ~replace(., is.na(.), 0)) %>%
   mutate(l1_code = ifelse(l3_code == "51" | l3_code == "52" | l3_code == "53" | l3_code == "54", "8",
                           ifelse(l3_code == "46" | l3_code == "47" | l3_code == "48", "5",
                                  ifelse(l3_code == "49" | l3_code == "50", "9", NA))))
@@ -1074,13 +1064,12 @@ df.historical <- df.historical %>%
          sd_min_air      = NULL)
 
 # Verify thermal categories
-# Replace NAs with 0s for families
 df.historical <- df.historical %>%
   mutate_at(c("centrarchidae"), ~replace(., is.na(.), 0)) %>%
   mutate_at(c("percidae"), ~replace(., is.na(.), 0)) %>%
   mutate_at(c("esocidae"), ~replace(., is.na(.), 0)) %>%
   mutate_at(c("ictaluridae"), ~replace(., is.na(.), 0)) %>%
-  mutate_at(c("cyprinidae"), ~replace(., is.na(.), 0))
+  mutate_at(c("cyprinidae"), ~replace(., is.na(.), 0)) %>%
   mutate_at(c("warm_temp"), ~replace(., is.na(.), 0))
 
 # Verify thermal categories
@@ -1090,26 +1079,179 @@ df.historical <- df.historical %>%
          cold_temp = ifelse(cottoidae >= 1 | salmonidae >= 1, 1, 0),
          unknown_temp = ifelse(acipenseridae >= 1 | gobiidae >= 1 | osmeridae >= 1, 1, 0))
 
-# Save historical dataframe
+# Add WBIC
+df.historical <- df.historical %>%
+  mutate(wbic = NULL) %>%
+  left_join(., site.id[c("site_id", "wbic")], by = c("site_id")) %>%
+  distinct(.)
+```
+
+### Step 8: Add lake size and productivity data
+
+This adds lake size (km^2) and average secchi depth (m) for lakes across Wisconsin and Minnesota.
+
+```{r, echo = `FALSE`}
+# Load WI data
+wi.size <- read.csv("data/raw/lake_size/fsh10228-sup-0002-dataset2.csv", sep = ",", head = TRUE)
+wi.prod <- readxl::read_excel("data/raw/productivity/fsh10228-sup-0005-dataset5.xlsx")
+wi.site <- read.csv(file = "data/raw/sites/WI_Site.csv", head = TRUE, sep = ",")
+site.id <- read.csv(file = "data/raw/sites/Site_ID.csv", head = TRUE, sep = ",")
+
+# Reformat site id
+site.id <- site.id %>%
+  left_join(., wi.site, by = "site_id", all = TRUE) %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower) %>%
+  mutate(lat  = as.numeric(lat),
+         long = as.numeric(long),
+         site = as.numeric(1:10962)) %>%
+  subset(., !is.na(lat)) %>%
+  mutate(x = NULL)
+
+# Locations from historical dataset
+df.sites <- df.historical %>%
+  dplyr::select(., c(site_id)) %>%
+  left_join(., site.id, by = c("site_id")) %>%
+  mutate(x = NULL) %>%
+  distinct(.)
+
+# Reformat lake size data
+wi.size <- wi.size %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower) %>%
+  dplyr::rename(size_acres      = official_size_acres,
+                watershed_acres = watershed_area_acres) %>%
+  dplyr::select(., c(wbic, size_acres, watershed_acres, max_depth_ft)) %>%
+  # Remove text and reformat
+  mutate(watershed_acres = gsub(" sq miles", "", watershed_acres)) %>%
+  mutate(watershed_acres = as.numeric(watershed_acres),
+         size_acres      = as.numeric(size_acres),
+         max_depth_ft    = as.numeric(max_depth_ft)) %>%
+  # Change imperial to metric
+  mutate(size_km2      = size_acres * 0.0040468564224) %>%
+  mutate(watershed_km2 = watershed_acres * 0.0040468564224) %>%
+  mutate(max_depth_m   = max_depth_ft / 3.28084) %>%
+  dplyr::select(., c(wbic, size_km2)) %>%
+  filter(!is.na(size_km2))
+
+# Reformat productivity data
+wi.prod <- wi.prod %>%
+  rename_all(tolower) %>%
+  mutate_all(tolower) %>%
+  dplyr::rename(secchi_m = `secchi (m)`) %>%
+  mutate(secchi_m = as.numeric(secchi_m)) %>%
+  # Filter to study period
+  filter(year >= 2003) %>%
+  filter(year <= 2013) %>%
+  # Summarize by lake
+  ungroup(.) %>%
+  dplyr::select(., c(wbic, secchi_m)) %>%
+  group_by(wbic) %>%
+  dplyr::summarize(secchi_m = mean(secchi_m, na.rm = TRUE))
+  
+# Merge WI data
+wi.data <- wi.size %>%
+  left_join(., wi.prod, by = c("wbic")) %>%
+  filter(!is.na(secchi_m))
+```
+
+```{r, echo = `FALSE`}
+# Load MN data
+mn.prod  <- st_read("data/raw/productivity/lakesmnwq_1975_2008_fill1975-epsg4326/MNWQ_1975_2008_fill1975-epsg4326.shp")
+mn.lakes <- read.csv(file = "data/raw/lake_identifiers/MN_nhd2dowlknum.csv", head = TRUE, sep = ",")
+
+# Reformat productivity data
+mn.prod <- mn.prod %>%
+  dplyr::select(., c(RNAME_1,
+                     X_UTM, Y_UTM,
+                     PolyAcres, unmlknum, dowlknum_1,
+                     X1975MEAN, X1985MEAN, X1990MEAN,
+                     X1995MEAN, X2000MEAN,
+                     X2005MEAN, X2008MEAN)) %>%
+  dplyr::rename(lake_name = RNAME_1,
+                x_utm            = X_UTM,
+                y_utm            = Y_UTM,
+                size_acres       = PolyAcres,
+                secchi_mean_1975 = X1975MEAN,
+                secchi_mean_1985 = X1985MEAN,
+                secchi_mean_1990 = X1990MEAN,
+                secchi_mean_1995 = X1995MEAN,
+                secchi_mean_2000 = X2000MEAN,
+                secchi_mean_2005 = X2005MEAN,
+                secchi_mean_2008 = X2008MEAN,
+                dowlknum         = dowlknum_1)
+
+# Calculate mean secchi depth across same timespan as fishkills
+mn.prod.final <- df.sites %>%
+  left_join(., mn.lakes, by = c("site_id")) %>%
+  dplyr::select(., c("site_id", "dowlknum")) %>%
+  left_join(., mn.prod, by = c("dowlknum")) %>%
+  dplyr::select(., c("site_id", "dowlknum",
+                     "secchi_mean_2000",
+                     "secchi_mean_2005",
+                     "secchi_mean_2008")) %>%
+  group_by(site_id, dowlknum) %>%
+  dplyr::summarize(secchi_mean_2000 = mean(secchi_mean_2000, na.rm = TRUE),
+                   secchi_mean_2005 = mean(secchi_mean_2005, na.rm = TRUE),
+                   secchi_mean_2008 = mean(secchi_mean_2008, na.rm = TRUE)) %>%
+  dplyr::summarize(secchi_m = mean(c(secchi_mean_2000, secchi_mean_2005, secchi_mean_2008), na.rm = TRUE)) %>%
+  # Replace NaN w/ NA and omit
+  mutate(secchi_m = ifelse(secchi_m == "NaN", NA, secchi_m)) %>%
+  na.omit(.)
+
+# Calculate lake size by getting mean of each bay and combining bays (different dowlknum for same site_id)
+mn.size.final <- df.sites %>%
+  left_join(., mn.lakes, by = c("site_id")) %>%
+  dplyr::select(., c("site_id", "dowlknum")) %>%
+  left_join(., mn.prod, by = c("dowlknum")) %>%
+  dplyr::select(., c("site_id", "dowlknum",
+                     "size_acres")) %>%
+  # Replace NaN w/ NA and omit
+  mutate(size_acres = ifelse(size_acres == "NaN", NA, size_acres)) %>%
+  distinct(.) %>%
+  group_by(site_id, dowlknum) %>%
+  dplyr::summarize(size_acres = mean(size_acres, na.rm = TRUE)) %>%
+  distinct(.) %>%
+  ungroup(.) %>%
+  group_by(site_id) %>%
+  dplyr::summarize(size_acres = sum(size_acres, na.rm = TRUE)) %>%
+  filter(size_acres != 0) %>%
+  # Convert to km2
+  mutate(size_km2 = size_acres * 0.0040468564224) %>%
+  mutate(size_acres = NULL)
+
+# Combine MN data
+mn.data <- merge(mn.prod.final, mn.size.final, all = TRUE)
+
+# Add new covariates and reduce dataset
+df.historical <- df.sites %>%
+  left_join(., mn.data) %>%
+  left_join(., wi.data) %>%
+  dplyr::select(., c("site_id", "secchi_m", "size_km2")) %>%
+  na.omit(.) %>%
+  left_join(df.historical, ., by = c("site_id")) %>%
+  distinct(.) %>%
+  filter(!is.na(secchi_m))
+
+# Save output
 write.csv(df.historical, "data/processed/df_historical.csv", row.names = FALSE)
 
 # Remove unnecessary dataframes
 rm(fish, df.historical,
    ecoregions, ecoregions.sp,
    ecoregions.mn, ecoregions.wi,
-   localities, spatial)
+   localities, spatial,
+   mn.size.final,
+   mn.prod, mn.prod.final)
 ```
 
 ### Step 8: Add water temperature to future dataset
 
 This reformats future water temperature estimates (2041-2059; 2081-2099) via the same methodology used to create the concurrent water temperature dataset. First, this processes annual and monthly data separately for computational efficiency. Second, this averages annual and monthly data across waterbodies with multiple site_ids. Third, z-scores are calculated for the mean and maximum surface and bottom water temperatures. Fourth, the first PC for maximum surface, mean surface, and maximum bottom temperatures is added as a separate column. These temperature estimates are from Winslow et al. (2017), which used six models (ACCESS, CNRM, GFDL, IPSL, MIROC5, MRIS) from the Coupled Model Intercomparison Project Phase 5 (CMIP5) and were based on RCP 8.5 projections.
 
-
-#### YOU"RE HERE SIMON
-
 ```{r echo = `FALSE`}
 # Load future water temperature data
-future.water <- read_tsv("data/raw/ACCESS_thermal_metrics.tsv") %>%
+future.water <- read_tsv("data/raw/temp_water/ACCESS_thermal_metrics.tsv") %>%
   inner_join(site.id, by = "site_id")
 
 # Reformat water temperature data
@@ -1567,8 +1709,8 @@ localities <- future.air %>%
   mutate(id = c(1:11097)) # create unique identifier
 
 # Create spatial points for air temperature and waterbody locations (lat, long)
-localities.sp <- SpatialPoints(localities[, 1:2])
-site.sp       <- SpatialPoints(site.id[, 4:5])
+localities.sp <- SpatialPoints(localities[, c("lat", "long")])
+site.sp       <- SpatialPoints(site.id[, c("lat", "long")])
 
 # Find nearest air temperature location for each waterbody
 air.nearest <- apply(gDistance(site.sp, localities.sp, byid = TRUE), 2, which.min)
@@ -1616,11 +1758,11 @@ rm(future.air, site.sp,
    air.nearest, air.pr, air_pca)
 ```
 
-### Step 10: Add geographic, census, and ecoregion to future dataset
+### Step 10: Add geographic, census, ecoregion, productivity, and lake size to future dataset
 
 This adds geographic (county, state), 2010 US census, and ecoregion data to the historical dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody locatlities to determine which ecoregion polygon they were in. into the dataset. Lastly, I associated each waterbody with a single set of geographic coordinates because there are numerous "site_id" identifiers for a single waterbody.
 
-This adds geographic (county, state), 2010 US census, and ecoregion data to the future dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody locatlities to determine which ecoregion polygon they were in. Lastly, I associated each waterbody with a single set of geographic coordinates because there are numerous "site_id" identifiers for a single waterbody.
+This adds geographic (county, state), 2010 US census, and ecoregion data to the future dataset. First, I used the waterbody centroid coordinates to determine the county and state for each locality. Second, I used these geographic identifiers to associate county population estimates (https://www.census.gov/geo/maps-data/data/tiger-data.html). Third, I used the waterbody localities to determine ecoregion.
 
 ```{r echo = `FALSE`}
 # Set working directory
@@ -1819,6 +1961,15 @@ df.future <- rbind(df.future.mid, df.future.late) %>%
          sd_mean_air     = NULL,
          sd_min_air      = NULL)
 
+##############################################
+# Add new covariates and reduce dataset
+df.future <- df.sites %>%
+  left_join(., mn.data) %>%
+  left_join(., wi.data) %>%
+  dplyr::select(., c("site_id", "secchi_m", "size_km2")) %>%
+  na.omit(.) %>%
+  left_join(., df.future)
+
 # Save historical dataframe
 write.csv(df.future, "data/processed/df_future.csv", row.names = FALSE)
 
@@ -1826,12 +1977,13 @@ write.csv(df.future, "data/processed/df_future.csv", row.names = FALSE)
 rm(ecoregions, ecoregions.sp,
    ecoregions.mn, ecoregions.wi,
    census.mn, census.wi, df.census, census,
-   site.id, df.spatial, df.future)
+   site.id, df.spatial, df.future,
+   mn.data, wi.data)
 ```
 
 ### Step 11: Add snowfall data
 
-This creates a snowfall dataset for the entire geographic range of the Winslow et al. (2017) dataset, which encompasses WI, MN, and MI. After performing this step, the historical (2003-2014) and future (2041-2059; 2081-2099) datasets are ready for modeling.
+This creates a snowfall dataset for the entire geographic range of Winslow et al. (2017).
 
 ```{r echo = `FALSE`}
 # Create snowfall function
@@ -1860,7 +2012,7 @@ tidy_snow <- function(path) {
 }
 
 # Change working directory
-setwd("data/raw/PRISM_precip")
+setwd("data/raw/precip")
 
 # Save names of PRISM files
 file_names <- list.files() %>%

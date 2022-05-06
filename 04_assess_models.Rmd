@@ -1,7 +1,7 @@
 ---
 title: "assess models"
 author: "SPT"
-date: "2021_08_16"
+date: "2022_05_06"
 output: github_document
 ---
 
@@ -32,8 +32,8 @@ rm(list = ls())
 setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/data/models")
 
 # Load data
-training <- read.csv(file = "training.csv", head = TRUE, sep = ",")
-testing  <- read.csv(file = "testing.csv",  head = TRUE, sep = ",")
+training    <- fread("training.csv")
+testing     <- fread("testing.csv")
 ```
 
 ### Step 2: Verify formatting
@@ -83,12 +83,16 @@ setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/data/models/asse
 # Save file names
 model_names <- list.files()
 
-# Load models
-all_models <- model_names %>%
+# Load full models
+all_model_names <- model_names %>%
+  as.data.frame(.) %>%
+  dplyr::rename(model = 1)
+
+all_models <- as.vector(all_model_names$model) %>%
   purrr::map(., ~read_rds(.))
 
 # Extract model names and objects
-all_models <- tibble(name = str_sub(str_extract(model_names, "^.*\\."),
+all_models <- tibble(name = str_sub(str_extract(all_model_names$model, "^.*\\."),
                                     1, -2), model = all_models)
 ```
 
@@ -108,29 +112,31 @@ predict_route <- function(model, newdata) {
 all_models <- all_models %>%
   mutate(fit_test = purrr::map(model, predict_route, newdata = testing))
 
-# Calculate logloss and auc
-auc     <- rep(NA, nrow(all_models))
-logloss <- auc
+# Calculate logloss and auc for full models
+all.auc <- rep(NA, nrow(all_models))
+all.logloss <- all.auc
 for (i in 1:nrow(all_models)) {
   a <- tibble(fit_test = all_models$fit_test[[i]],
               truth    = testing$summerkill)
-  auc[i] <- roc_auc(a, truth, fit_test)$.estimate
-  logloss[i] <- mn_log_loss(a, truth, fit_test)$.estimate
+  all.auc[i] <- roc_auc(a, truth, fit_test)$.estimate
+  all.logloss[i] <- mn_log_loss(a, truth, fit_test)$.estimate
 }
 
-# Add logloss and auc
+# Add logloss and auc for full models
 all_models <- all_models %>%
-  add_column(auc) %>%
-  add_column(logloss) %>%
+  add_column(all.auc) %>%
+  add_column(all.logloss) %>%
+  dplyr::rename(auc     = all.auc,
+                logloss = all.logloss) %>%
   arrange(logloss, desc(auc))
 
 # Print logloss and auc in decreasing order
-print(tibble::as_tibble(all_models[c("name", "logloss")]))
+print(tibble::as_tibble(all_models[c("name", "logloss")]), n = 36)
 # Top candidate models based on auc and logloss
-# 1 ridge_w1             <train> <dbl [301,528]> 0.0514    2.21
-# 2 ridge_w2             <train> <dbl [301,528]> 0.0448    2.24
-# 3 ridge_a1             <train> <dbl [301,528]> 0.0613    2.30
-# 4 ridge_a2             <train> <dbl [301,528]> 0.0569    2.42
+# 1 ridge_a2_ds             2.39
+# 2 ridge_w1_ds             2.44
+# 3 ridge_w2_ds             2.45
+# 4 lasso_w3_ds             2.59
 ```
 
 ### Step 4: Extract coefficients
@@ -172,23 +178,17 @@ all_models <- all_models %>%
 # Subset models
 a1_models  <- all_models[grep("a1", x = all_models$name), ]
 a2_models  <- all_models[grep("a2", x = all_models$name), ]
-a3_models  <- all_models[grep("a3", x = all_models$name), ]
 w1_models  <- all_models[grep("w1", x = all_models$name), ]
 w2_models  <- all_models[grep("w2", x = all_models$name), ]
-w3_models  <- all_models[grep("w3", x = all_models$name), ]
 
 ## Subset best models
 best_models <- all_models %>%
-  subset(., name == "ridge_w1_ds" |
-            name == "ridge_a1_ds" |
-            name == "ridge_w2_ds" |
-            name == "ridge_a3_ds")
+  subset(., name == "ridge_a1_ds" | name == "ridge_a2_ds" | name == "ridge_w1_ds" | name == "ridge_w2_ds")
 ```
 
-### Step 5: Plot coefficients
+### Step 5: Plot coefficients (Fig. S1)
 
 Plot coefficients of lesser models
-
 
 ```{r, setup, include = `FALSE`, echo = `FALSE`}
 knitr::opts_knit$set(root.dir = "/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/figures")
@@ -201,89 +201,9 @@ setwd("/Users/simontye/Research/Projects/MME_Temp/2020_MME_Temp/figures")
 ##################
 
 # Describe PDF output
-pdf(file = "models_a1.pdf", width  = 7, height = 7)
+pdf(file = "fig_S1.pdf", width  = 8, height = 8)
 
-# Plot coefficients of simple air models
-a1_models %>%
-  unnest(coef) %>%
-  ggplot(aes(x = fct_reorder(term, estimate), 
-             y = estimate, 
-             fill = estimate > 0)) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~ name, ncol = 2) +
-  coord_flip() +
-  labs(x = NULL) +
-  theme_bw()
-
-# Close plot
-dev.off()
-
-##################
-
-# Describe PDF output
-pdf(file = "models_w1.pdf", width  = 7, height = 7)
-
-# Plot coefficients
-w1_models %>%
-  unnest(coef) %>%
-  ggplot(aes(x = fct_reorder(term, estimate), 
-             y = estimate, 
-             fill = estimate > 0)) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~ name, ncol = 2) +
-  coord_flip() +
-  labs(x = NULL) +
-  theme_bw()
-
-# Close plot
-dev.off()
-
-##################
-
-# Describe PDF output
-pdf(file = "models_a2.pdf", width  = 7, height = 7)
-
-# Plot coefficents of simple air models
-a2_models %>%
-  unnest(coef) %>%
-  ggplot(aes(x = fct_reorder(term, estimate), 
-             y = estimate, 
-             fill = estimate > 0)) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~ name, ncol = 2) +
-  coord_flip() +
-  labs(x = NULL) +
-  theme_bw()
-
-# Close plot
-dev.off()
-
-##################
-
-# Describe PDF output
-pdf(file = "models_w2.pdf", width  = 12, height = 12)
-
-# Plot coefficents of simple air models
-w2_models %>%
-  unnest(coef) %>%
-  ggplot(aes(x = fct_reorder(term, estimate), 
-             y = estimate, 
-             fill = estimate > 0)) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~ name, ncol = 2) +
-  coord_flip() +
-  labs(x = NULL) +
-  theme_bw()
-
-# Close plot
-dev.off()
-
-##################
-
-# Describe PDF output
-pdf(file = "models_best.pdf", width  = 7, height = 7)
-
-# Plot coefficients of simple air models
+# Plot coefficients of best fit models
 best_models %>%
   unnest(coef) %>%
   ggplot(aes(x = fct_reorder(term, estimate), 
@@ -298,8 +218,6 @@ best_models %>%
 
 # Close plot
 dev.off()
-
-##################
 ```
 
 ######################################
