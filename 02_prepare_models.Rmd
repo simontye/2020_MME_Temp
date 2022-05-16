@@ -336,10 +336,10 @@ testing <- predict(pre.proc.values, testing) %>%
          year = as.integer(year))
 
 # Export data
-write_csv(testing,       "models/testing.csv")
-write_csv(training,      "models/training.csv")
-write_csv(df.historical, "processed/df_historical2.csv")
-write_csv(df.future,     "processed/df_future2.csv")
+write.csv(testing,       "models/testing.csv")
+write.csv(training,      "models/training.csv")
+write.csv(df.historical, "processed/df_historical2.csv")
+write.csv(df.future,     "processed/df_future2.csv")
 ```
 
 ######################################

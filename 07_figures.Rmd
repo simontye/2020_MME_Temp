@@ -63,19 +63,11 @@ df.future      <- fread("data/processed/df_future2.csv")
 df.snow        <- fread("data/processed/df_snow.csv")
 thermal        <- fread("data/raw/thermal/fish_thermal.csv")
 
-## Load final models
-#ridge_a2 <- readRDS("data/models/full/full_ridge_a2.rds")
-#ridge_w1 <- readRDS("data/models/full/full_ridge_w1.rds")
-
 # Load probabilities
 prob.hist.a2   <- fread("data/processed/ridge_a2_historical.csv")
 prob.hist.w1   <- fread("data/processed/ridge_w1_historical.csv")
 prob.future.a2 <- fread("data/processed/ridge_a2_future.csv")
 prob.future.w1 <- fread("data/processed/ridge_w1_future.csv")
-
-### Load forecasts
-##forecast.water <- read.csv(file = "processed/forecast_water.csv", head = TRUE, sep = ",")
-###forecast.air   <- read.csv(file = "processed/forecast_air.csv", head = TRUE, sep = ",")
 
 # Load functions to compute prediction interval via simulation
 compute_quantile <- function(x, q, reps = 1000) {
